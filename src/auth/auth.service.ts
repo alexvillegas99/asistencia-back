@@ -1,0 +1,61 @@
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { AppCliente } from 'src/encryption/enum/AppCliente.enum';
+import { EncryptionService } from 'src/encryption/encryption.service';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcrypt';
+import * as jwt from 'jsonwebtoken';
+import { JWT_EXPIRES_IN, JWT_SECRET } from 'src/config/config.env';
+import { JwtModule } from '@nestjs/jwt';
+import { UsuariosService } from 'src/usuarios/usuarios.service';
+
+@Injectable()
+export class AuthService {
+  logger: Logger = new Logger(AuthService.name);
+
+  constructor(
+    //private readonly socioService: SocioService,
+    private readonly encryptionService: EncryptionService,
+    private readonly jwtService: JwtService,
+    private readonly usuariosService: UsuariosService,
+  ) {}
+
+  async login({ email, password }: { email: string; password: string }) {
+    const usuario = await this.usuariosService.findByEmail(email);
+
+    if (!usuario) {
+      throw new UnauthorizedException('Credenciales incorrectas');
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, usuario.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Credenciales incorrectas');
+    }
+
+    const payload = { sub: usuario._id };
+    const accessToken = this.jwtService.sign(payload);
+
+    return { accessToken, user: { id: usuario._id, email: usuario.email, rol: usuario.rol } };
+  }
+
+  generateRefreshToken(userId: string) {
+    const payload = { sub: userId };
+    return this.jwtService.sign(payload, { expiresIn: '7d' }); // Refresh token válido por 7 días
+  }
+
+  renewToken(id: string) {
+    try {
+    
+        const payload = { sub: id };
+        return this.jwtService.sign(payload);
+      
+    } catch (error) {
+      throw new UnauthorizedException('Refresh token inválido');
+    }
+  }
+}
