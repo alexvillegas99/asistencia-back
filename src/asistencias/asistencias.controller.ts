@@ -33,9 +33,13 @@ export class AsistenciasController {
     return this.asistenciasService.generateAsistenciaReportDebug(idCurso);
   }
 
+  
+
+
   @Post('registrar')
   async registrarAsistencia(@Body() data: any) {
     try {
+      console.log('Registrar asistencia');
       console.log(data);
       // Validar si el curso está activo
       const cursoActivo = await this.asistenciasService.verificarCursoActivo(
@@ -46,11 +50,14 @@ export class AsistenciasController {
       }
 
       // Validar si el asistente pertenece al curso
-      const perteneceAlCurso =
+      const perteneceAlCurso:any =
         await this.asistenciasService.validarAsistenteEnCurso(
           data.cedula
         );
-      if (!perteneceAlCurso) {
+
+
+
+      if (!perteneceAlCurso.valid) {
         throw new NotFoundException(
           'El asistente no pertenece al curso especificado.',
         );
@@ -72,9 +79,11 @@ export class AsistenciasController {
           'Aun no esta habilitado para registrar la asistencia de salida.',
         );
       }
-
+      console.log(perteneceAlCurso);
       return {
         message: 'Asistencia registrada exitosamente.',
+        asistencia: perteneceAlCurso.asistente,
+        valid: perteneceAlCurso.valid,
       };
     } catch (error) {
       throw error;

@@ -12,6 +12,10 @@ import { join } from 'path';
 import { UsuariosModule } from './usuarios/usuarios.module';
 import { AuthModule } from './auth/auth.module';
 import { CodigosProfesoresModule } from './codigos_profesores/codigos_profesores.module';
+import { AmazonS3Module } from './amazon-s3/amazon-s3.module';
+import { CampanasModule } from './campanas/campanas.module';
+import { NotificacionesModule } from './notificaciones/notificaciones.module';
+import { MoodleModule } from './moodle/moodle.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
@@ -22,6 +26,10 @@ import { CodigosProfesoresModule } from './codigos_profesores/codigos_profesores
     UsuariosModule,
     AuthModule,
     CodigosProfesoresModule,
+    AmazonS3Module,
+    CampanasModule,
+    NotificacionesModule,
+    MoodleModule
   ],
   controllers: [AppController],
   providers: [AppService],

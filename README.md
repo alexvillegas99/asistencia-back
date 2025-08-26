@@ -1,1 +1,1 @@
-scp -i "C:\Users\alexv\OneDrive\Escritorio\Claves Pem\corpfourier.pem" -r "C:\Users\alexv\OneDrive\Escritorio\proyectos personales\asistencia-back\dist" ubuntu@ec2-3-143-42-240.us-east-2.compute.amazonaws.com:/home/ubuntu/asistencia-back/dist
+scp -i "C:\Users\alexv\Desktop\Claves Pem\corpfourier.pem" -r "C:\Users\alexv\Desktop\NIC\asistencia-back\dist" ubuntu@ec2-3-143-42-240.us-east-2.compute.amazonaws.com:/home/ubuntu/asistencia-back/dist

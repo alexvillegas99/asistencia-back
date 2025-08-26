@@ -48,6 +48,7 @@ export class AuthController {
     @Body() body: { email: string; password: string },
     @Res() res: Response,
   ) {
+    console.log('body', body);
     const result = await this.authService.login(body);
     return res.status(200).json(result);
   }

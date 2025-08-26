@@ -9,6 +9,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 import { UsuariosModule } from 'src/usuarios/usuarios.module';
 import { EncryptionModule } from 'src/encryption/encryption.module';
+import { AsistentesModule } from 'src/asistentes/asistentes.module';
 @Module({
   controllers: [AuthController],
 
@@ -24,7 +25,8 @@ import { EncryptionModule } from 'src/encryption/encryption.module';
     }),
 
     UsuariosModule,
-    EncryptionModule
+    EncryptionModule,
+    AsistentesModule
   ],
   providers: [AuthService, JwtStrategy, LocalStrategy],
   exports: [AuthService],

@@ -13,6 +13,7 @@ import * as jwt from 'jsonwebtoken';
 import { JWT_EXPIRES_IN, JWT_SECRET } from 'src/config/config.env';
 import { JwtModule } from '@nestjs/jwt';
 import { UsuariosService } from 'src/usuarios/usuarios.service';
+import { AsistentesService } from 'src/asistentes/asistentes.service';
 
 @Injectable()
 export class AuthService {
@@ -23,13 +24,25 @@ export class AuthService {
     private readonly encryptionService: EncryptionService,
     private readonly jwtService: JwtService,
     private readonly usuariosService: UsuariosService,
+    private readonly estudianteService: AsistentesService,
   ) {}
 
   async login({ email, password }: { email: string; password: string }) {
     const usuario = await this.usuariosService.findByEmail(email);
-
+    //si usuario no se encuntra validar si es es un estudiante
     if (!usuario) {
-      throw new UnauthorizedException('Credenciales incorrectas');
+      const estudiante = await this.estudianteService.buscarPorCedula(email);
+
+      
+
+      if (!estudiante) {
+        throw new UnauthorizedException('Credenciales incorrectas');
+      }
+      console.log('estudiante', estudiante);
+      const payload = { sub: estudiante._id };
+      const accessToken = this.jwtService.sign(payload);
+
+      return { accessToken, user: { ...estudiante, rol: 'ESTUDIANTE' } };
     }
 
     const isPasswordValid = await bcrypt.compare(password, usuario.password);
@@ -40,7 +53,10 @@ export class AuthService {
     const payload = { sub: usuario._id };
     const accessToken = this.jwtService.sign(payload);
 
-    return { accessToken, user: { id: usuario._id, email: usuario.email, rol: usuario.rol } };
+    return {
+      accessToken,
+      user: { id: usuario._id, email: usuario.email, rol: usuario.rol },
+    };
   }
 
   generateRefreshToken(userId: string) {
@@ -50,10 +66,8 @@ export class AuthService {
 
   renewToken(id: string) {
     try {
-    
-        const payload = { sub: id };
-        return this.jwtService.sign(payload);
-      
+      const payload = { sub: id };
+      return this.jwtService.sign(payload);
     } catch (error) {
       throw new UnauthorizedException('Refresh token inválido');
     }

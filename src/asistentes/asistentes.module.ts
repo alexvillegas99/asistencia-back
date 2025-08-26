@@ -21,5 +21,6 @@ import { CursoModule } from 'src/curso/curso.module';
   ],
   controllers: [AsistentesController],
   providers: [AsistentesService],
+  exports: [AsistentesService],
 })
 export class AsistentesModule {}
