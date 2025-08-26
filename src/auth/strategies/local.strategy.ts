@@ -3,7 +3,6 @@ import { PassportStrategy } from '@nestjs/passport';
 import { Request } from 'express';
 import { Strategy } from 'passport-local';
 import { ConfigService } from '@nestjs/config';
-import { EncryptionService } from 'src/encryption/encryption.service';
 @Injectable()
 export class LocalStrategy extends PassportStrategy(Strategy) {
   logger = new Logger(LocalStrategy.name);
@@ -11,7 +10,6 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
   constructor(
    
     private config: ConfigService,
-    private readonly encryptionService: EncryptionService,
   ) {
     super({
       usernameField: 'nickname',

@@ -13,7 +13,6 @@ import { Response, Request } from 'express';
 
 import { Auth } from './decorators/auth.decorator';
 import { GetUser } from './decorators';
-import { EncryptionService } from 'src/encryption/encryption.service';
 import { UsuariosService } from 'src/usuarios/usuarios.service';
 
 
@@ -24,7 +23,6 @@ import { UsuariosService } from 'src/usuarios/usuarios.service';
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
-    private readonly encryptionService: EncryptionService,
     private readonly usuariosService: UsuariosService,
   ) {}
   logger: Logger = new Logger(AuthController.name);

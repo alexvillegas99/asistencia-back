@@ -4,8 +4,6 @@ import {
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
-import { AppCliente } from 'src/encryption/enum/AppCliente.enum';
-import { EncryptionService } from 'src/encryption/encryption.service';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -21,7 +19,6 @@ export class AuthService {
 
   constructor(
     //private readonly socioService: SocioService,
-    private readonly encryptionService: EncryptionService,
     private readonly jwtService: JwtService,
     private readonly usuariosService: UsuariosService,
     private readonly estudianteService: AsistentesService,
