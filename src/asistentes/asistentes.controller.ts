@@ -274,4 +274,18 @@ export class AsistentesController {
     return this.asistentesService.actualizarOrientacionVocacional(id, body);
   }
 
+  @Post('cambiar-curso')
+  async cambiarCurso(
+    @Body() body: any,
+  ) {
+    console.log('Cambiando curso para el asistente:');
+    return await this.asistentesService.cambiarCurso(body);
+  }
+
+  @Get('buscar/por-cedula/:cedula')
+  async buscarPorCedula(@Param('cedula') cedula: string) {
+    console.log('Buscando asistente por cédula:', cedula);
+    return await this.asistentesService.buscarPorCedula(cedula);
+  }
+  
 }

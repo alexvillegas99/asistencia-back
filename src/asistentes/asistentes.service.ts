@@ -20,6 +20,17 @@ import { CursoService } from 'src/curso/curso.service';
 
 @Injectable()
 export class AsistentesService {
+  async cambiarCurso(body: any) {
+    const { cedula, cursoId } = body;
+    console.log(cedula, ' cedula', cursoId, 'cursoId');
+ 
+    // Lógica para cambiar el curso del asistente
+    return await this.asistentesModel.findOneAndUpdate(
+      { cedula },
+      { curso: cursoId },
+      { new: true },
+    );
+  }
   async todos() {
     try {
       return await this.asistentesModel.find().exec();
@@ -224,50 +235,58 @@ export class AsistentesService {
     }
   }
 
-async actualizarOrientacionVocacional(id: string, body: any) {
-  try {
-    // Soportar tanto body.orientacionVocacional.etapas como el plano
-    const ovIn = body?.orientacionVocacional ?? body;
+  async actualizarOrientacionVocacional(id: string, body: any) {
+    try {
+      // Soportar tanto body.orientacionVocacional.etapas como el plano
+      const ovIn = body?.orientacionVocacional ?? body;
+      if (!ovIn) throw new Error('Falta "orientacionVocacional" en el body');
 
-    if (!ovIn) {
-      throw new Error('Falta "orientacionVocacional" en el body');
+      const etapaActual = ovIn.etapaActual ?? 'SIN_CITA';
+      const etapas = ovIn.etapas ?? ovIn; // si viene plano, ya tiene primera/segunda/...
+      const def = {
+        estado: null,
+        fechaISO: null,
+        comentario: null,
+        logs: [] as any[],
+      };
+
+      const primera = { ...def, ...(etapas.primera ?? {}) };
+      const segunda = { ...def, ...(etapas.segunda ?? {}) };
+      const tercera = { ...def, ...(etapas.tercera ?? {}) };
+      const cuarta = { ...def, ...(etapas.cuarta ?? {}) };
+
+      // 👇 NUEVO: tomar la próxima cita global si llega (permitir null)
+      const siguienteCitaISO: string | null =
+        typeof ovIn.siguienteCitaISO === 'string' &&
+        ovIn.siguienteCitaISO.length
+          ? ovIn.siguienteCitaISO
+          : null;
+
+      const ovDoc = {
+        etapaActual,
+        primera,
+        segunda,
+        tercera,
+        cuarta,
+        // 👇 NUEVO: incluirla en el subdocumento que guardas
+        siguienteCitaISO,
+      };
+
+      const actualizado = await this.asistentesModel.findByIdAndUpdate(
+        id,
+        { $set: { orientacionVocacional: ovDoc } },
+        { new: true, runValidators: true },
+      );
+
+      return actualizado;
+    } catch (error) {
+      console.error('Error al actualizar la orientación vocacional:', error);
+      throw new InternalServerErrorException(
+        'Error al actualizar la orientación vocacional',
+        (error as Error).message,
+      );
     }
-
-    const etapaActual = ovIn.etapaActual ?? 'SIN_CITA';
-    const etapas = ovIn.etapas ?? ovIn; // si viene plano, ya tiene primera/segunda/...
-
-    const def = { estado: null, fechaISO: null, comentario: null, logs: [] as any[] };
-
-    const primera = { ...def, ...(etapas.primera ?? {}) };
-    const segunda  = { ...def, ...(etapas.segunda  ?? {}) };
-    const tercera  = { ...def, ...(etapas.tercera  ?? {}) };
-    const cuarta   = { ...def, ...(etapas.cuarta   ?? {}) };
-
-    const ovDoc = {
-      etapaActual,
-      primera,
-      segunda,
-      tercera,
-      cuarta,
-    };
-
-    // Usamos $set para reemplazar el subdocumento completo
-    const actualizado = await this.asistentesModel.findByIdAndUpdate(
-      id,
-      { $set: { orientacionVocacional: ovDoc } },
-      { new: true, runValidators: true }
-    );
-
-    return actualizado;
-  } catch (error) {
-    console.error('Error al actualizar la orientación vocacional:', error);
-    throw new InternalServerErrorException(
-      'Error al actualizar la orientación vocacional',
-      (error as Error).message,
-    );
   }
-}
-
 
   async generateQrForAsistente(asistente: any, res: Response): Promise<void> {
     try {

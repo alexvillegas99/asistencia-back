@@ -7,6 +7,7 @@ export enum RolUsuario {
   ADMIN = 'ADMIN',
   PROFESOR = 'PROFESOR',
   ESTUDIANTE = 'ASESOR',
+  PSICOLOGO = 'PSICOLOGO'
 }
 
 @Schema({ timestamps: true })

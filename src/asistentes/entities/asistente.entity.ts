@@ -4,22 +4,33 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 
 export type AsistentesDocument = HydratedDocument<Asistentes>;
 
-const ETAPA_ACTUAL = ['SIN_CITA','PRIMERA','SEGUNDA','TERCERA','CUARTA'] as const;
-const ESTADO_CITA = ['EN_PROCESO','COMPLETA','NO_ASISTE','REAGENDAMIENTO'] as const;
+const ETAPA_ACTUAL = [
+  'SIN_CITA',
+  'PRIMERA',
+  'SEGUNDA',
+  'TERCERA',
+  'CUARTA',
+] as const;
+const ESTADO_CITA = [
+  'EN_PROCESO',
+  'COMPLETA',
+  'NO_ASISTE',
+  'REAGENDAMIENTO',
+] as const;
 
 // -------- Subschemas (sin _id) --------
 @Schema({ _id: false })
 class CitaLogSub {
   @Prop({ type: String, enum: ESTADO_CITA, required: true })
-  estado: typeof ESTADO_CITA[number];
+  estado: (typeof ESTADO_CITA)[number];
 
-  @Prop({ type: String, required: true })   // ISO: 2025-08-23T15:00
+  @Prop({ type: String, required: true }) // ISO: 2025-08-23T15:00
   fechaISO: string;
 
   @Prop({ type: String, required: true })
   comentario: string;
 
-  @Prop({ type: String, required: true })   // timestamp de registro del log
+  @Prop({ type: String, required: true }) // timestamp de registro del log
   tsISO: string;
 }
 const CitaLogSchema = SchemaFactory.createForClass(CitaLogSub);
@@ -27,7 +38,7 @@ const CitaLogSchema = SchemaFactory.createForClass(CitaLogSub);
 @Schema({ _id: false })
 class CitaEtapaSub {
   @Prop({ type: String, enum: ESTADO_CITA, required: false })
-  estado?: typeof ESTADO_CITA[number];
+  estado?: (typeof ESTADO_CITA)[number];
 
   @Prop({ type: String, required: false })
   fechaISO?: string;
@@ -37,6 +48,7 @@ class CitaEtapaSub {
 
   @Prop({ type: [CitaLogSchema], default: [] })
   logs: CitaLogSub[];
+
 }
 const CitaEtapaSchema = SchemaFactory.createForClass(CitaEtapaSub);
 
@@ -47,7 +59,7 @@ function ovDefault() {
       primera: { logs: [] },
       segunda: { logs: [] },
       tercera: { logs: [] },
-      cuarta:  { logs: [] },
+      cuarta: { logs: [] },
     },
   };
 }
@@ -55,7 +67,7 @@ function ovDefault() {
 @Schema({ _id: false })
 class OrientacionVocacionalSub {
   @Prop({ type: String, enum: ETAPA_ACTUAL, default: 'SIN_CITA' })
-  etapaActual: typeof ETAPA_ACTUAL[number];
+  etapaActual: (typeof ETAPA_ACTUAL)[number];
 
   // definimos cada etapa con su default de logs vacío
   @Prop({ type: CitaEtapaSchema, default: () => ({ logs: [] }) })
@@ -69,8 +81,14 @@ class OrientacionVocacionalSub {
 
   @Prop({ type: CitaEtapaSchema, default: () => ({ logs: [] }) })
   cuarta: CitaEtapaSub;
+
+  
+  @Prop({ type: String, required: false, default: null })
+  siguienteCitaISO?: string;
 }
-const OrientacionVocacionalSchema = SchemaFactory.createForClass(OrientacionVocacionalSub);
+const OrientacionVocacionalSchema = SchemaFactory.createForClass(
+  OrientacionVocacionalSub,
+);
 
 // -------- Tu esquema principal --------
 @Schema({ timestamps: true })
@@ -99,7 +117,7 @@ export class Asistentes {
       primera: { logs: [] },
       segunda: { logs: [] },
       tercera: { logs: [] },
-      cuarta:  { logs: [] },
+      cuarta: { logs: [] },
     }),
   })
   orientacionVocacional?: OrientacionVocacionalSub;
