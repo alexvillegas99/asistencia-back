@@ -11,15 +11,63 @@ import { UpdateCursoDto } from './dto/update-curso.dto';
 
 @Injectable()
 export class CursoService {
+  reseteDatos(_id: string) {
+    console.log(_id);
+    const data = this.cursoModel
+      .updateOne(
+        { _id },
+        {
+          diasCurso: 24,
+          diasActuales: 0,
+        },
+      )
+      .exec();
+    console.log('log actualziacion', data);
+    // this.cursoModel.deleteOne(arg0).exec();
+  }
+  // Opcional: “ayer” alineado a Ecuador (00:00:00 de ayer en America/Guayaquil)
+  ayerEC(): Date {
+    // Hoy en EC como "YYYY-MM-DD"
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Guayaquil',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const [y, m, d] = fmt.format(new Date()).split('-'); // "YYYY-MM-DD"
+    // Hoy 00:00 EC → restamos 1 día
+    const hoyCeroEC = new Date(`${y}-${m}-${d}T00:00:00-05:00`);
+    return new Date(hoyCeroEC.getTime() - 24 * 60 * 60 * 1000);
+  }
+
   async buscarOCrear(curso: string) {
     try {
-      const cursoEncontrado = await this.cursoModel.findOne({ nombre: curso });
+      const doc = await this.cursoModel
+        .findOneAndUpdate(
+          { nombre: curso },
+          {
+            // Solo si NO existe: crear con estas propiedades
+            $setOnInsert: {
+              nombre: curso,
+              // si quieres forzar también createdAt inicial:
+              createdAt: new Date(),
+              // clave: setear updatedAt a AYER para que tu lógica de +1 dispare hoy
+              updatedAt: this.ayerEC(),
+              // si manejas este campo:
+              diasActuales: 0,
+            },
+          },
+          {
+            upsert: true,
+            new: true,
+            // desactiva timestamps SOLO en esta operación para respetar nuestro updatedAt
+            timestamps: false,
+            setDefaultsOnInsert: true,
+          },
+        )
+        .exec();
 
-      if (cursoEncontrado) {
-        return cursoEncontrado;
-      }
-      const nuevoCurso = new this.cursoModel({ nombre: curso });
-      return await nuevoCurso.save();
+      return doc;
     } catch (error) {
       throw new InternalServerErrorException(
         'Error al crear el curso',
@@ -27,6 +75,7 @@ export class CursoService {
       );
     }
   }
+
   constructor(
     @InjectModel(CursoModelName)
     private readonly cursoModel: Model<CursoDocument>,
@@ -46,33 +95,32 @@ export class CursoService {
 
   async findAll(): Promise<any[]> {
     try {
-return this.cursoModel.aggregate([
-  {
-    $addFields: {
-      idAsString: { $toString: '$_id' }
-    }
-  },
-  {
-    $lookup: {
-      from: 'asistentes',
-      localField: 'idAsString',
-      foreignField: 'curso',
-      as: 'asistentes'
-    }
-  },
-  {
-    $project: {
-      nombre: 1,
-      estado: 1,
-      diasCurso:1,
-      diasActuales:1,
-      createdAt:1,
-      totalAsistentes: { $size: '$asistentes' }
-    }
-  },
-  { $sort: { createdAt: -1 } }
-]);
-
+      return this.cursoModel.aggregate([
+        {
+          $addFields: {
+            idAsString: { $toString: '$_id' },
+          },
+        },
+        {
+          $lookup: {
+            from: 'asistentes',
+            localField: 'idAsString',
+            foreignField: 'curso',
+            as: 'asistentes',
+          },
+        },
+        {
+          $project: {
+            nombre: 1,
+            estado: 1,
+            diasCurso: 1,
+            diasActuales: 1,
+            createdAt: 1,
+            totalAsistentes: { $size: '$asistentes' },
+          },
+        },
+        { $sort: { createdAt: -1 } },
+      ]);
     } catch (error) {
       throw new InternalServerErrorException(
         'Error al obtener los cursos',
@@ -83,7 +131,9 @@ return this.cursoModel.aggregate([
 
   async findOne(id: string): Promise<CursoDocument> {
     try {
+      console.log(id);
       const curso = await this.cursoModel.findById(id).exec();
+      console.log(curso);
       if (!curso) {
         throw new NotFoundException(`Curso con ID "${id}" no encontrado`);
       }

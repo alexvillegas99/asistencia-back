@@ -2,10 +2,11 @@ import {
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { CreateAsistenciaDto } from './dto/create-asistencia.dto';
 import {
   AsistenciaDocument,
@@ -18,8 +19,11 @@ import {
 import { CursoDocument, CursoModelName } from 'src/curso/entities/curso.entity';
 import axios from 'axios';
 import { cursorTo } from 'readline';
+import { Cron } from '@nestjs/schedule';
 @Injectable()
 export class AsistenciasService {
+
+    private readonly logger = new Logger(AsistenciasService.name);
   async todos() {
     try {
       return await this.asistenciaModel.find().exec();
@@ -240,25 +244,55 @@ export class AsistenciasService {
   async validarAsistenteEnCurso(cedula: string): Promise<any> {
     const asistente = await this.asistentesModel.findOne({ cedula }).exec();
 
-    console.log(asistente);
-
-    // Validar si el asistente existe y si su estado es true (o si no tiene estado definido)
-    if (asistente) {
-      const curso = await this.cursosModel
-        .findById(asistente.curso)
-        .lean()
-        .exec();
-      console.log('cursoooo', curso);
-      return {
-        valid: true,
-        asistente: {
-          ...asistente.toObject(),
-          cursoNombre: curso ? curso.nombre : null,
-        },
-      };
-    } else {
+    if (!asistente) {
       return { valid: false, asistente: null };
     }
+
+    // Buscar curso por _id (si el campo parece ObjectId) o por nombre
+    let cursoDoc: any = null;
+    const cursoField = asistente.curso;
+
+    if (cursoField && Types.ObjectId.isValid(String(cursoField))) {
+      cursoDoc = await this.cursosModel.findById(cursoField).lean().exec();
+    } else if (typeof cursoField === 'string') {
+      // si guardaste nombre directamente en `curso`
+      cursoDoc = await this.cursosModel
+        .findOne({ nombre: cursoField })
+        .lean()
+        .exec();
+    }
+
+    // nombre del curso (doc o lo que venga en el asistente)
+    const cursoNombre =
+      (cursoDoc && cursoDoc.nombre) ||
+      (typeof cursoField === 'string' ? cursoField : null);
+
+    // total de días de clase contados
+    const diasActuales = Number(
+      (cursoDoc && cursoDoc.diasActuales) ?? 30, // fallback como en el front
+    );
+
+    // total de asistencias (activas + inactivas + adicionales)
+    asistente.asistencias = asistente.asistencias+1;
+    const totalAsistencias =
+      (asistente.asistencias ?? 0) +
+      (asistente.asistenciasInactivas ?? 0) +
+      (asistente.asistenciasAdicionales ?? 0);
+
+    // porcentaje (redondeado, tope 100%). Si diasActuales=0 => 0
+    const porcentaje =
+      diasActuales > 0
+        ? Math.min(100, Math.round((totalAsistencias / diasActuales) * 100))
+        : 0;
+
+    return {
+      valid: true,
+      asistente: {
+        ...asistente.toObject(),
+        cursoNombre,
+        porcentaje, // 👈 agregado
+      },
+    };
   }
 
   // Registrar asistencia
@@ -351,27 +385,34 @@ export class AsistenciasService {
       const hoyEc = new Date(Date.now() - 5 * 60 * 60 * 1000)
         .toISOString()
         .slice(0, 10);
-
-      await this.cursosModel
-        .updateOne(
-          {
-            _id: cursoId,
-            $expr: {
-              $ne: [
-                {
-                  $dateToString: {
-                    format: '%Y-%m-%d',
-                    date: '$updatedAt',
-                    timezone: 'America/Guayaquil',
-                  },
-                },
-                hoyEc,
-              ],
+const result = await this.cursosModel.findOneAndUpdate(
+  {
+    _id: cursoId,
+    $expr: {
+      $or: [
+        {
+          $ne: [
+            {
+              $dateToString: {
+                format: '%Y-%m-%d',
+                date: '$updatedAt',
+                timezone: 'America/Guayaquil',
+              },
             },
-          },
-          { $inc: { diasActuales: 1 } },
-        )
-        .exec();
+            hoyEc,
+          ],
+        },
+        { $eq: ['$diasActuales', 0] },
+      ],
+    },
+  },
+  {
+    $inc: { diasActuales: 1 },
+    $set: { updatedAt: new Date() },
+  },
+  { new: true } // <- devuelve el documento actualizado
+);
+
 
       try {
         if (registrosHoy.length === 0) {
@@ -436,6 +477,55 @@ export class AsistenciasService {
         'Error al registrar la asistencia',
         error.message,
       );
+    }
+  }
+
+
+   // Corre todos los días a las 22:00 hora Ecuador
+  @Cron('0 22 * * *', { timeZone: 'America/Guayaquil' })
+  async validarFaltas() {
+    const hoy = new Date();
+    const hoyStr = hoy.toISOString().split('T')[0]; // YYYY-MM-DD (UTC, pero ya tienes control con tu campo fecha)
+
+    this.logger.log(`Ejecutando validación de inasistencias para ${hoyStr}`);
+
+    const cursos = await this.cursosModel.find().exec();
+
+    for (const curso of cursos) {
+      // 1. Verificar si hay al menos una asistencia en el curso hoy
+      const existeAsistencia = await this.asistenciaModel.exists({
+        curso: curso._id.toString(),
+        fecha: hoyStr,
+      });
+
+      if (!existeAsistencia) {
+        this.logger.log(`Curso ${curso.nombre} no tuvo ninguna asistencia registrada hoy.`);
+        continue;
+      }
+
+      // 2. Obtener asistentes del curso
+      const asistentes = await this.asistentesModel.find({ curso: curso._id }).exec();
+
+      for (const asistente of asistentes) {
+        // 3. Verificar si el asistente tiene asistencia hoy
+        const yaAsistio = await this.asistenciaModel.exists({
+          curso: curso._id.toString(),
+          asistenteId: asistente._id.toString(),
+          fecha: hoyStr,
+        });
+
+        if (!yaAsistio) {
+          this.logger.warn(
+            `Asistente ${asistente.cedula} (${asistente._id}) del curso ${curso.nombre} no registró asistencia hoy. Se incrementa inasistencias.`
+          );
+
+          // Incrementar inasistencias
+          await this.asistentesModel.updateOne(
+            { _id: asistente._id },
+            { $inc: { inasistencias: 1 } }
+          ).exec();
+        }
+      }
     }
   }
 }

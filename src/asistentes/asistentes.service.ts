@@ -4,8 +4,8 @@ import {
   InternalServerErrorException,
   ConflictException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { Connection, FilterQuery, Model, Types } from 'mongoose';
 import { CreateAsistenteDto } from './dto/create-asistente.dto';
 import { UpdateAsistenteDto } from './dto/update-asistente.dto';
 import {
@@ -17,19 +17,50 @@ import * as QRCode from 'qrcode';
 import { Response } from 'express';
 import { createCanvas, loadImage } from 'canvas';
 import { CursoService } from 'src/curso/curso.service';
-
+import {
+  AsistenteMigradoDocument,
+  AsistentesMigradosModelName,
+} from './entities/asistentes-migrados.entity';
+import axios from 'axios';
 @Injectable()
 export class AsistentesService {
   async cambiarCurso(body: any) {
     const { cedula, cursoId } = body;
     console.log(cedula, ' cedula', cursoId, 'cursoId');
- 
+
     // Lógica para cambiar el curso del asistente
-    return await this.asistentesModel.findOneAndUpdate(
+    const asistente: any = await this.asistentesModel.findOneAndUpdate(
       { cedula },
       { curso: cursoId },
       { new: true },
     );
+    const curso = await this.cursoService.findOne(cursoId);
+    try {
+      const negocio = asistente.negocio;
+      const cursoNombre = curso.nombre;
+
+      const data = {
+        ID: negocio.trim(),
+        fields: {
+          UF_CRM_1756402575272: cursoNombre,
+        },
+      };
+
+      console.log('Consulta a enviar:', JSON.stringify(data, null, 2)); // Imprime la consulta en formato JSON
+
+      axios
+        .post(
+          `https://nicpreu.bitrix24.es/rest/1/2dc3j6lin4etym89/crm.deal.update`,
+          data,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          },
+        )
+        .then((response) => console.log('Respuesta:', response.data))
+        .catch((error) => console.error('Error:', error));
+    } catch (error) {}
   }
   async todos() {
     try {
@@ -46,6 +77,9 @@ export class AsistentesService {
     @InjectModel(AsistentesModelName)
     private readonly asistentesModel: Model<AsistentesDocument>,
     private readonly cursoService: CursoService,
+    @InjectModel(AsistentesMigradosModelName)
+    private readonly asistentesMigrados: Model<AsistenteMigradoDocument>,
+    @InjectConnection() private readonly conn: Connection,
   ) {}
 
   async buscarPorCedula(cedula: string) {
@@ -519,6 +553,355 @@ export class AsistentesService {
   async buscarCurso(nombre: any) {
     console.log(nombre);
     return await this.cursoService.findOne2(nombre);
+  }
+  /**
+   * Copia TODOS los docs del curso (por _id) a 'asistentes_migrados' (mismo _id),
+   * reemplazando el campo `curso` por el NOMBRE del curso.
+   * Luego elimina los originales del curso y reinicia el curso (por _id).
+   */
+  async migrateCursoPorId(cursoId: string, batchSize = 5000) {
+    if (!Types.ObjectId.isValid(cursoId)) {
+      return { ok: false, message: 'cursoId inválido.' };
+    }
+    const _cursoId = new Types.ObjectId(cursoId);
+
+    const session = await this.conn.startSession();
+    let processed = 0;
+
+    try {
+      await session.withTransaction(async () => {
+        // 0) Traer el curso por _id (con session)
+        const curso = await this.cursoService.findOne(_cursoId.toString());
+        if (!curso) {
+          throw new Error('Curso no encontrado');
+        }
+        const cursoNombre = curso.nombre;
+
+        // 1) Seleccionar asistentes del curso (soporta que estén guardados por id o por nombre)
+        const filterAsistentes = {
+          $or: [{ curso: cursoId }, { curso: cursoNombre }],
+        };
+        const ids = await this.asistentesModel
+          .find(filterAsistentes)
+          .distinct('_id')
+          .session(session);
+        const total = ids.length;
+        if (total === 0) {
+          // Reiniciar curso igual si quieres (opcional). Aquí lo hacemos:
+          await this.cursoService.reseteDatos(_cursoId.toString());
+          // Y salimos temprano
+          throw new Error('NO_ASISTENTES'); // para volver con mensaje limpio
+        }
+
+        // 2) Copiar (replace/upsert) por lotes, reemplazando `curso` => nombre
+        const cursor = this.asistentesModel
+          .find({ _id: { $in: ids as Types.ObjectId[] } }, null, { lean: true })
+          .cursor();
+
+        const ops: any[] = [];
+        for await (const doc of cursor) {
+          const replacement = { ...doc, curso: cursoNombre };
+          ops.push({
+            replaceOne: {
+              filter: { _id: doc._id },
+              replacement,
+              upsert: true,
+            },
+          });
+
+          if (ops.length >= batchSize) {
+            await this.asistentesMigrados.bulkWrite(ops, {
+              session,
+              ordered: false,
+            });
+            processed += ops.length;
+            ops.length = 0;
+          }
+        }
+        if (ops.length) {
+          await this.asistentesMigrados.bulkWrite(ops, {
+            session,
+            ordered: false,
+          });
+          processed += ops.length;
+        }
+
+        // 3) Verificación
+        const migratedCount = await this.asistentesMigrados.countDocuments(
+          { _id: { $in: ids as Types.ObjectId[] } },
+          { session },
+        );
+        if (migratedCount !== total) {
+          throw new Error(
+            `Verificación fallida: esperados ${total}, migrados ${migratedCount}`,
+          );
+        }
+
+        // 4) Eliminar originales SOLO de este curso (por id o nombre)
+        await this.asistentesModel.deleteMany(
+          { _id: { $in: ids as Types.ObjectId[] } },
+          { session },
+        );
+
+        // 5) Reiniciar el curso por _id
+        await this.cursoService.reseteDatos(_cursoId.toString());
+
+        // Resultado OK
+        (session as any)._result = {
+          ok: true,
+          scope: 'curso',
+          cursoId,
+          cursoNombre,
+          total,
+          processed,
+        };
+      });
+
+      // si marcamos un error controlado por NO_ASISTENTES
+      // la transacción cae al catch, pero no es un error real de sistema
+      const res = (session as any)._result;
+      if (res) {
+        return {
+          ...res,
+          message: `Copiados a 'asistentes_migrados' y eliminados de 'asistentes' (curso='${res.cursoNombre}'). Curso reiniciado.`,
+        };
+      } else {
+        // No hubo asistentes
+        return {
+          ok: true,
+          scope: 'curso',
+          cursoId,
+          total: 0,
+          processed: 0,
+          message: 'No hay asistentes en ese curso. Curso reiniciado.',
+        };
+      }
+    } catch (err: any) {
+      if (err?.message === 'NO_ASISTENTES') {
+        return {
+          ok: true,
+          scope: 'curso',
+          cursoId,
+          total: 0,
+          processed: 0,
+          message: 'No hay asistentes en ese curso. Curso reiniciado.',
+        };
+      }
+      return { ok: false, message: String(err) };
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  async migrateTodo(batchSize = 5000) {
+    const session = await this.conn.startSession();
+    let processed = 0;
+
+    // 0) Traer todos los cursos para mapear id -> nombre
+    const cursos = await this.cursoService.findAll();
+    const idToName = new Map<string, string>();
+    const nameSet = new Set<string>();
+    for (const c of cursos) {
+      idToName.set(String(c._id), c.nombre);
+      nameSet.add(c.nombre);
+    }
+
+    const ids = await this.asistentesModel.find({}).distinct('_id');
+    const total = ids.length;
+
+    // Si no hay asistentes, reinicia cursos y termina
+    if (total === 0) {
+      await this.conn
+        .collection('cursos')
+        .updateMany({}, { $set: { diasCurso: 24, diasActuales: 0 } });
+
+      // await this.conn.collection('cursos').deleteMany({});
+      return {
+        ok: true,
+        scope: 'all',
+        total: 0,
+        processed: 0,
+        message: 'No hay asistentes para migrar. Cursos reiniciados.',
+      };
+    }
+
+    const FALLBACK = 'curso no registrado';
+
+    try {
+      await session.withTransaction(async () => {
+        const cursor = this.asistentesModel
+          .find({ _id: { $in: ids as Types.ObjectId[] } }, null, { lean: true })
+          .cursor();
+
+        const ops: any[] = [];
+        for await (const doc of cursor) {
+          // --- Normalización del campo `curso` a NOMBRE ---
+          let cursoNormalizado = doc.curso;
+
+          if (
+            cursoNormalizado &&
+            Types.ObjectId.isValid(String(cursoNormalizado))
+          ) {
+            // venía como ObjectId (o string con forma de ObjectId)
+            const nombre = idToName.get(String(cursoNormalizado));
+            cursoNormalizado = nombre ?? FALLBACK;
+          } else if (typeof cursoNormalizado === 'string') {
+            // si ya es un nombre conocido, lo dejamos; si no, probamos mapa; si no existe, fallback
+            const mapeado = idToName.get(cursoNormalizado);
+            if (mapeado) {
+              cursoNormalizado = mapeado;
+            } else if (!nameSet.has(cursoNormalizado)) {
+              cursoNormalizado = FALLBACK;
+            }
+          } else {
+            // cualquier otro caso raro → fallback
+            cursoNormalizado = FALLBACK;
+          }
+
+          const replacement = { ...doc, curso: cursoNormalizado };
+
+          ops.push({
+            replaceOne: {
+              filter: { _id: doc._id },
+              replacement,
+              upsert: true,
+            },
+          });
+
+          if (ops.length >= batchSize) {
+            await this.asistentesMigrados.bulkWrite(ops, {
+              session,
+              ordered: false,
+            });
+            processed += ops.length;
+            ops.length = 0;
+          }
+        }
+
+        if (ops.length) {
+          await this.asistentesMigrados.bulkWrite(ops, {
+            session,
+            ordered: false,
+          });
+          processed += ops.length;
+        }
+
+        // Verificación
+        const migratedCount = await this.asistentesMigrados.countDocuments(
+          { _id: { $in: ids as Types.ObjectId[] } },
+          { session },
+        );
+        if (migratedCount !== total) {
+          throw new Error(
+            `Verificación fallida: esperados ${total}, migrados ${migratedCount}`,
+          );
+        }
+
+        // Eliminar TODOS los asistentes
+        await this.asistentesModel.deleteMany({}, { session });
+
+        // Si ya no quedan asistentes → reiniciar TODOS los cursos (dentro de la misma transacción)
+        const remaining = await this.asistentesModel.countDocuments(
+          {},
+          { session },
+        );
+        if (remaining === 0) {
+          await this.conn
+            .collection('cursos')
+            .updateMany(
+              {},
+              { $set: { diasCurso: 24, diasActuales: 0 } },
+              { session },
+            );
+          // await this.conn.collection('cursos').deleteMany({});
+        }
+      });
+
+      return {
+        ok: true,
+        scope: 'all',
+        total,
+        processed,
+        message:
+          `Copiados TODOS (curso normalizado a nombre, con fallback '${FALLBACK}'), ` +
+          `eliminados de 'asistentes' y cursos reiniciados.`,
+      };
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  async findPaginatedMigrados(datos: any) {
+    const filter: FilterQuery<AsistenteMigradoDocument> = {};
+    const { search, page, limit } = datos;
+    console.log(search);
+    if (search?.trim()) {
+      const q = search.trim();
+      filter.$or = [
+        { cedula: new RegExp(q, 'i') },
+        { nombre: new RegExp(q, 'i') },
+        { curso: new RegExp(q, 'i') },
+      ];
+    }
+    const projection = {
+      cedula: 1,
+      nombre: 1,
+      curso: 1, // ya normalizado a nombre
+      asistencias: 1,
+      inasistencias: 1,
+      asistenciasInactivas: 1,
+      asistenciasAdicionales: 1,
+      createdAtEcuador: 1,
+      _id: 1,
+    };
+
+    const [total, data] = await Promise.all([
+      this.asistentesMigrados.countDocuments(filter),
+      this.asistentesMigrados
+        .find(filter, projection, { lean: true })
+        .sort({ _id: -1 }) // sin timestamps en migrados, orden por _id
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .exec(),
+    ]);
+
+    return {
+      ok: true,
+      data,
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
+  }
+
+  async findAllForExport(search?: string) {
+    const filter: FilterQuery<AsistenteMigradoDocument> = {};
+    if (search?.trim()) {
+      const q = search.trim();
+      filter.$or = [
+        { cedula: new RegExp(q, 'i') },
+        { nombre: new RegExp(q, 'i') },
+      ];
+    }
+
+    const projection = {
+      cedula: 1,
+      nombre: 1,
+      curso: 1,
+      estado: 1,
+      asistencias: 1,
+      inasistencias: 1,
+      asistenciasInactivas: 1,
+      asistenciasAdicionales: 1,
+      createdAtEcuador: 1,
+      _id: 1,
+    };
+
+    return this.asistentesMigrados
+      .find(filter, projection, { lean: true })
+      .sort({ _id: -1 })
+      .exec();
   }
 
   imagenDefecto =

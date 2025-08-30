@@ -16,9 +16,11 @@ import { AmazonS3Module } from './amazon-s3/amazon-s3.module';
 import { CampanasModule } from './campanas/campanas.module';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { MoodleModule } from './moodle/moodle.module';
+import { ScheduleModule } from '@nestjs/schedule';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
+    ScheduleModule.forRoot(),
     DatabaseModule,
     AsistentesModule,
     AsistenciasModule,
@@ -29,7 +31,7 @@ import { MoodleModule } from './moodle/moodle.module';
     AmazonS3Module,
     CampanasModule,
     NotificacionesModule,
-    MoodleModule
+    MoodleModule,
   ],
   controllers: [AppController],
   providers: [AppService],

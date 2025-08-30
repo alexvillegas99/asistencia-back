@@ -19,7 +19,7 @@ export class Curso {
   @Prop({ type: String, required: false }) // URL de la imagen o base64 opcional
   imagen: string;
 
-  @Prop({ type: Number, required: true, default: 0 })
+  @Prop({ type: Number, required: true, default: 24 })
   diasCurso: number;
 
   @Prop({ type: Number, required: true, default: 0 })

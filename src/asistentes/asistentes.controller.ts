@@ -17,7 +17,7 @@ import { CreateAsistenteDto } from './dto/create-asistente.dto';
 import { UpdateAsistenteDto } from './dto/update-asistente.dto';
 import { ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
-
+import * as XLSX from 'xlsx';
 @ApiTags('Asistentes')
 @Controller('asistentes')
 export class AsistentesController {
@@ -264,7 +264,6 @@ export class AsistentesController {
     return this.asistentesService.todos();
   }
 
-
   @Put('orientacion-vocacional/:id')
   async actualizarOrientacionVocacional(
     @Param('id') id: string,
@@ -275,9 +274,7 @@ export class AsistentesController {
   }
 
   @Post('cambiar-curso')
-  async cambiarCurso(
-    @Body() body: any,
-  ) {
+  async cambiarCurso(@Body() body: any) {
     console.log('Cambiando curso para el asistente:');
     return await this.asistentesService.cambiarCurso(body);
   }
@@ -286,6 +283,86 @@ export class AsistentesController {
   async buscarPorCedula(@Param('cedula') cedula: string) {
     console.log('Buscando asistente por cédula:', cedula);
     return await this.asistentesService.buscarPorCedula(cedula);
+  }
+
+  // POST /asistentes/migracion/curso/ABC123?confirm=true&batchSize=5000
+  //agrega descripcion para identifica
+  @Post('curso/:cursoId')
+  async migrateCurso(
+    @Param('cursoId') cursoId: string,
+    @Query('batchSize') batchSize?: string,
+  ) {
+    const size = Math.max(1, Number(batchSize) || 15000);
+    return this.asistentesService.migrateCursoPorId(cursoId, size);
+  }
+
+  // POST /asistentes/migracion/todo?confirm=true&batchSize=5000
+  @Post('migrar/todo')
+  async migrateTodo(@Query('batchSize') batchSize?: string) {
+    const size = Math.max(1, Number(batchSize) || 15000);
+    return this.asistentesService.migrateTodo(size);
+  }
+
+  // GET /asistentes/migrados/buscar?search=&curso=&page=1&limit=10
+  @Get('migrados/buscar')
+  async list(
+    @Query('search') search?: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '10',
+  ) {
+    const p = Math.max(1, Number(page) || 1);
+    const l = Math.min(100, Math.max(1, Number(limit) || 10));
+    return this.asistentesService.findPaginatedMigrados({
+      search, 
+      page: p,
+      limit: l,
+    });
+  }
+// GET /asistentes/migrados/export?search=...
+  @Get('migrados/export')
+  async export(@Query('search') search: string, @Res() res: Response) {
+    const rows = await this.asistentesService.findAllForExport(search);
+
+    // Transformar a estructura de Excel (encabezados en español)
+    const data = rows.map((r:any) => {
+      const totalAsist =
+        (r.asistencias ?? 0) +
+        (r.asistenciasInactivas ?? 0) +
+        (r.asistenciasAdicionales ?? 0);
+
+      return {
+        'Cédula': r.cedula || '',
+        'Nombre': r.nombre || '',
+        'Curso': r.curso || 'curso no registrado',
+        'Asistencias': totalAsist,
+        'Inasistencias': r.inasistencias ?? 0,
+        'Adicionales': r.asistenciasAdicionales ?? 0,
+        'Creado (EC)': r.createdAtEcuador ? new Date(r.createdAtEcuador) : '',
+      };
+    });
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(data, { cellDates: true });
+    // Anchos de columna
+    ws['!cols'] = [
+      { wch: 14 }, // Cédula
+      { wch: 32 }, // Nombre
+      { wch: 18 }, // Curso
+      { wch: 10 }, // Estado
+      { wch: 12 }, // Asistencias
+      { wch: 13 }, // Inasistencias
+      { wch: 12 }, // Adicionales
+      { wch: 20 }, // Creado (EC)
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, 'Migrados');
+
+    // XLS binario (legacy .xls)  
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xls' });
+
+    const filename = `asistentes_migrados_${new Date().toISOString().slice(0, 10)}.xls`;
+    res.setHeader('Content-Type', 'application/vnd.ms-excel');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buf);
   }
   
 }

@@ -54,6 +54,7 @@ export class AsistenciasController {
         await this.asistenciasService.validarAsistenteEnCurso(
           data.cedula
         );
+        console.log(perteneceAlCurso)
 
 
 
@@ -68,7 +69,7 @@ export class AsistenciasController {
         await this.asistenciasService.registrarAsistencia(
           data.cedula,
           data.cursoId,
-        );
+        ); 
       if (asistenciaRegistrada === 'completo') {
         throw new ConflictException(
           'El asistente ya tiene registrada la asistencia para hoy.',
