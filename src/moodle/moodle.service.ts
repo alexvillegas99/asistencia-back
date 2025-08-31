@@ -233,7 +233,6 @@ export class MoodleService {
    
     return perCourse;
   } */
-
 async getCoursesWithGradesByUsername(username: string, userId?: number) {
   let user = userId ? null : await this.getUserByUsername(username);
   const uid = userId ?? user?.id;
@@ -253,10 +252,12 @@ async getCoursesWithGradesByUsername(username: string, userId?: number) {
 
       const gradeItems = (await this.getUserGradesForCourse(c.id, uid)) ?? [];
 
+      // 🔑 Ahora filtramos SOLO los que tengan idnumber válido
       const grades = gradeItems
-        .filter((it) => it?.itemid && String(it.itemid).trim() !== '')
+        .filter((it) => it?.idnumber && String(it.idnumber).trim() !== '')
         .map((it) => ({
-          itemId: it.itemid,
+          itemId: it.itemid ?? null,   // opcional, por si igual quieres verlo
+          idnumber: it.idnumber,       // ✅ criterio principal
           itemName: it.itemname ?? '',
           graderaw: it.graderaw ?? null,
           grade: it.grade ?? null,
@@ -284,7 +285,7 @@ async getCoursesWithGradesByUsername(username: string, userId?: number) {
             image: image ?? null,
             grades,
           }
-        : null;
+        : null; // ⚠️ si no tiene ningún idnumber válido → descartamos el curso
     }),
   );
 
