@@ -110,10 +110,17 @@ export class AsistentesController {
   @Post('add/asistente')
   async addAsistente(
     @Query()
-    query: { nombre: string; cedula: string; curso: string; negocio: string },
+    query: {
+      nombre: string;
+      cedula: string;
+      curso: string;
+      negocio: string;
+      telefono?: string;
+      correo?: string;
+    },
     @Res() res: Response,
   ) {
-    let { nombre, cedula, curso, negocio } = query;
+     let { nombre, cedula, curso, negocio, telefono, correo } = query;
     console.log(nombre);
     // Validar los parámetros requeridos
     if (!nombre || !cedula || !curso || !negocio) {
@@ -127,6 +134,10 @@ export class AsistentesController {
     nombre = nombre.trim();
     cedula = cedula.trim();
 
+    if (telefono) telefono = telefono.trim();
+  if (correo) correo = correo.trim();
+
+
     try {
       // Llama al servicio para agregar el asistente al curso
       const result = await this.asistentesService.addAsistente({
@@ -134,6 +145,8 @@ export class AsistentesController {
         cedula,
         curso,
         negocio,
+         telefono,
+      correo,
       });
       await this.asistentesService.generateQrForAsistente(result, res);
       // Responde con un mensaje claro
@@ -313,30 +326,30 @@ export class AsistentesController {
     const p = Math.max(1, Number(page) || 1);
     const l = Math.min(100, Math.max(1, Number(limit) || 10));
     return this.asistentesService.findPaginatedMigrados({
-      search, 
+      search,
       page: p,
       limit: l,
     });
   }
-// GET /asistentes/migrados/export?search=...
+  // GET /asistentes/migrados/export?search=...
   @Get('migrados/export')
   async export(@Query('search') search: string, @Res() res: Response) {
     const rows = await this.asistentesService.findAllForExport(search);
 
     // Transformar a estructura de Excel (encabezados en español)
-    const data = rows.map((r:any) => {
+    const data = rows.map((r: any) => {
       const totalAsist =
         (r.asistencias ?? 0) +
         (r.asistenciasInactivas ?? 0) +
         (r.asistenciasAdicionales ?? 0);
 
       return {
-        'Cédula': r.cedula || '',
-        'Nombre': r.nombre || '',
-        'Curso': r.curso || 'curso no registrado',
-        'Asistencias': totalAsist,
-        'Inasistencias': r.inasistencias ?? 0,
-        'Adicionales': r.asistenciasAdicionales ?? 0,
+        Cédula: r.cedula || '',
+        Nombre: r.nombre || '',
+        Curso: r.curso || 'curso no registrado',
+        Asistencias: totalAsist,
+        Inasistencias: r.inasistencias ?? 0,
+        Adicionales: r.asistenciasAdicionales ?? 0,
         'Creado (EC)': r.createdAtEcuador ? new Date(r.createdAtEcuador) : '',
       };
     });
@@ -356,7 +369,7 @@ export class AsistentesController {
     ];
     XLSX.utils.book_append_sheet(wb, ws, 'Migrados');
 
-    // XLS binario (legacy .xls)  
+    // XLS binario (legacy .xls)
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xls' });
 
     const filename = `asistentes_migrados_${new Date().toISOString().slice(0, 10)}.xls`;
@@ -364,5 +377,4 @@ export class AsistentesController {
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(buf);
   }
-  
 }

@@ -160,7 +160,7 @@ export class MoodleService {
    * - Fechas formateadas a ISO o a zona local si quieres
    * - Paraleliza la consulta de notas por curso
    */
-  async getCoursesWithGradesByUsername(username: string, userId?: number) {
+/*   async getCoursesWithGradesByUsername(username: string, userId?: number) {
     // 1) resolver userId si no viene
     let user = userId ? null : await this.getUserByUsername(username);
     const uid = userId ?? user?.id;
@@ -186,7 +186,7 @@ export class MoodleService {
 
         // limpiar / mapear ítems
         const grades = gradeItems.map((it) => ({
-          itemId: it.itemid,
+          itemId: it.itemid, // si no viene este campo o es vacio no enviart y si eel curtso no tiene items no mostrar 
           itemName: it.itemname ?? '',
           graderaw: it.graderaw ?? null,
           grade: it.grade, // puede venir como número o string formateado
@@ -230,11 +230,67 @@ export class MoodleService {
       hour12: false,
     });
 
-    // (opcional) ordenar por nombre de curso
-    /*  perCourse.sort((a, b) =>
-      a.fullname.toLowerCase().localeCompare(b.fullname.toLowerCase(), 'es')
-    ); */
-
+   
     return perCourse;
-  }
+  } */
+
+async getCoursesWithGradesByUsername(username: string, userId?: number) {
+  let user = userId ? null : await this.getUserByUsername(username);
+  const uid = userId ?? user?.id;
+  if (!uid) throw new BadRequestException('Usuario no encontrado');
+
+  const courses = (await this.getUserCourses(uid)) ?? [];
+
+  const perCourse = await Promise.all(
+    courses.map(async (c: any) => {
+      if (!c?.id) return null; // ⚠️ curso inválido → descartamos
+
+      const fromOverview = c?.overviewfiles?.[0]?.fileurl as string | undefined;
+      const image =
+        c?.courseimage && String(c.courseimage).trim() !== ''
+          ? (c.courseimage as string)
+          : fromOverview;
+
+      const gradeItems = (await this.getUserGradesForCourse(c.id, uid)) ?? [];
+
+      const grades = gradeItems
+        .filter((it) => it?.itemid && String(it.itemid).trim() !== '')
+        .map((it) => ({
+          itemId: it.itemid,
+          itemName: it.itemname ?? '',
+          graderaw: it.graderaw ?? null,
+          grade: it.grade ?? null,
+          percentage: it.percentage ?? null,
+          gradedategraded: it?.gradedategraded
+            ? new Intl.DateTimeFormat('es-EC', {
+                timeZone: 'America/Guayaquil',
+                day: '2-digit',
+                month: 'long',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false,
+              }).format(new Date(it.gradedategraded * 1000))
+            : null,
+          min: it.grademin ?? null,
+          max: it.grademax ?? null,
+        }));
+
+      return grades.length > 0
+        ? {
+            id: c.id,
+            shortname: c.shortname ?? '',
+            fullname: c.fullname ?? '',
+            image: image ?? null,
+            grades,
+          }
+        : null;
+    }),
+  );
+
+  // descartamos cursos nulos o indefinidos
+  return perCourse.filter((c): c is NonNullable<typeof c> => c != null);
+}
+
+
 }

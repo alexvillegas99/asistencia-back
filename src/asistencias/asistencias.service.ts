@@ -482,7 +482,7 @@ const result = await this.cursosModel.findOneAndUpdate(
 
 
    // Corre todos los días a las 22:00 hora Ecuador
-  @Cron('0 22 * * *', { timeZone: 'America/Guayaquil' })
+  @Cron('0 22 * * *', { timeZone: 'America/Guayaquil', name: 'validarFaltas22' })
   async validarFaltas() {
     const hoy = new Date();
     const hoyStr = hoy.toISOString().split('T')[0]; // YYYY-MM-DD (UTC, pero ya tienes control con tu campo fecha)

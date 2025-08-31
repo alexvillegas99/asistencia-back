@@ -97,6 +97,13 @@ export class Asistentes {
   @Prop({ type: String, required: true }) nombre: string;
   @Prop({ type: String }) qr?: string;
   @Prop({ type: String }) negocio?: string;
+   // ✅ NUEVOS CAMPOS OPCIONALES
+  @Prop({ type: String, required: false, trim: true })
+  telefono?: string;
+
+  @Prop({ type: String, required: false, trim: true })
+  correo?: string;
+
   @Prop({ type: Date, default: Date.now }) createdAt: Date;
   @Prop({ type: Date, default: Date.now }) createdAtEcuador: Date;
   @Prop({ type: String, ref: 'Curso', required: true }) curso: string;

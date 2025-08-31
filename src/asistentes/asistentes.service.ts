@@ -474,48 +474,49 @@ export class AsistentesService {
     }
   }
 
-  async addAsistente(arg0: {
-    nombre: string;
-    cedula: string;
-    curso: string;
-    negocio: string;
-  }) {
-    //Buscar si existe el curso por el nombre.
-    try {
-      //reemplazar espacios en el nombre del curso con _ para evitar problemas con la url
-      const cursoSinEspacios = arg0.curso.replace(/ /g, '_');
-      const curso = await this.cursoService.buscarOCrear(cursoSinEspacios);
+async addAsistente(arg0: {
+  nombre: string;
+  cedula: string;
+  curso: string;
+  negocio: string;
+  telefono?: string;
+  correo?: string;
+}) {
+  try {
+    // Reemplazar espacios en el nombre del curso con _
+    const cursoSinEspacios = arg0.curso.replace(/ /g, '_');
+    const curso = await this.cursoService.buscarOCrear(cursoSinEspacios);
 
-      //Buscar si existe el asistente por la cedula
-      console.log(curso._id.toString());
+    // Buscar si existe el asistente por la cédula en ese curso
+    const diasAsistenciasAdicionales = curso?.diasActuales || 0;
 
-      const diasAsistenciasAdicionales = curso?.diasActuales || 0;
+    const asistente = await this.asistentesModel.findOne({
+      cedula: arg0.cedula,
+      curso: curso._id.toString(),
+    });
 
-      const asistente = await this.asistentesModel.findOne({
-        cedula: arg0.cedula,
-        curso: curso._id.toString(),
-      });
-      console.log(asistente);
-      if (asistente) {
-        throw new Error('Ya existe un asistente con esa cedula');
-      }
-
-      //Crear el asistente
-
-      const nuevoAsistente = new this.asistentesModel({
-        nombre: arg0.nombre,
-        cedula: arg0.cedula,
-        curso: curso._id.toString(),
-        negocio: arg0.negocio.trim(),
-        asistenciasAdicionales: diasAsistenciasAdicionales,
-      });
-
-      return await nuevoAsistente.save();
-    } catch (error) {
-      console.log(error);
-      throw new Error('Error al agregar');
+    if (asistente) {
+      throw new Error('Ya existe un asistente con esa cédula');
     }
+
+    // Crear el asistente
+    const nuevoAsistente = new this.asistentesModel({
+      nombre: arg0.nombre.trim(),
+      cedula: arg0.cedula.trim(),
+      curso: curso._id.toString(),
+      negocio: arg0.negocio.trim(),
+      telefono: arg0.telefono ? arg0.telefono.trim() : undefined,
+      correo: arg0.correo ? arg0.correo.trim() : undefined,
+      asistenciasAdicionales: diasAsistenciasAdicionales,
+    });
+
+    return await nuevoAsistente.save();
+  } catch (error) {
+    console.error(error);
+    throw new Error('Error al agregar');
   }
+}
+
 
   async cambiarEstadoAsistente(arg0: {
     cedula: string;
