@@ -207,11 +207,11 @@ export class AsistentesController {
     @Res() res: Response,
   ) {
     console.log('111');
-    query.curso = query.curso.replace(/ /g, '_');
-    const { estado, cedula, curso } = query;
+
+    const { estado, cedula } = query;
     console.log(query);
     // Validar los parámetros requeridos
-    if (!estado || !cedula || !curso) {
+    if (!estado || !cedula) {
       throw new HttpException(
         'Faltan parámetros requeridos: nombre, cedula o curso',
         HttpStatus.BAD_REQUEST,
@@ -222,8 +222,7 @@ export class AsistentesController {
       // Llama al servicio para agregar el asistente al curso
       return await this.asistentesService.cambiarEstadoAsistente({
         cedula,
-        curso,
-        estado,
+        estado
       });
     } catch (error) {
       console.error('Error al agregar asistente:', error.message);

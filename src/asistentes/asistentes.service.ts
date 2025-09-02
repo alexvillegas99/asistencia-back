@@ -520,19 +520,14 @@ async addAsistente(arg0: {
 
   async cambiarEstadoAsistente(arg0: {
     cedula: string;
-    curso: string;
     estado: string;
   }) {
     //Buscar si existe el curso por el nombre.
     try {
-      const curso = await this.cursoService.buscarOCrear(arg0.curso);
-
-      //Buscar si existe el asistente por la cédula
-      console.log(curso._id.toString());
+     
       console.log(arg0.cedula);
       const asistente = await this.asistentesModel.findOne({
-        cedula: arg0.cedula,
-        curso: curso._id.toString(),
+        cedula: arg0.cedula
       });
       if (!asistente) {
         throw new Error('No existe un asistente con esa cedula');
