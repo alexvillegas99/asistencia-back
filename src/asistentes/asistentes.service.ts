@@ -82,9 +82,22 @@ export class AsistentesService {
     @InjectConnection() private readonly conn: Connection,
   ) {}
 
-  async buscarPorCedula(cedula: string) {
-    return await this.asistentesModel.findOne({ cedula: cedula }).lean().exec();
-  }
+async buscarPorCedula(cedula: string, cursoId?: string) {
+
+
+ const estudiante = await this.asistentesModel
+    .findOne({ cedula })
+    .lean()
+    .exec();
+console.log(estudiante);
+    const curso = await this.cursoService.findOne(estudiante.curso);
+   const dataReturn = {
+    ...estudiante,
+    cursoNombre: curso?.nombre || 'Curso no encontrado',
+   }
+   return dataReturn;
+}
+
 
   async create(createAsistenteDto: any): Promise<AsistentesDocument> {
     try {
@@ -99,7 +112,7 @@ export class AsistentesService {
         throw new ConflictException(
           `Ya existe un asistente registrado con la cédula "${createAsistenteDto.cedula}" en el curso "${createAsistenteDto.curso}"`,
         );
-      }
+      } 
 
       // Crear y guardar el nuevo asistente
       const newAsistente = new this.asistentesModel(createAsistenteDto);

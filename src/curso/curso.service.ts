@@ -8,9 +8,12 @@ import { Model } from 'mongoose';
 import { CursoDocument, CursoModelName } from './entities/curso.entity';
 import { CreateCursoDto } from './dto/create-curso.dto';
 import { UpdateCursoDto } from './dto/update-curso.dto';
+import { AmazonS3Service } from 'src/amazon-s3/amazon-s3.service';
 
 @Injectable()
 export class CursoService {
+
+ 
   reseteDatos(_id: string) {
     console.log(_id);
     const data = this.cursoModel
@@ -79,6 +82,7 @@ export class CursoService {
   constructor(
     @InjectModel(CursoModelName)
     private readonly cursoModel: Model<CursoDocument>,
+    private readonly s3Service: AmazonS3Service
   ) {}
 
   async create(createCursoDto: CreateCursoDto): Promise<CursoDocument> {
@@ -169,9 +173,18 @@ export class CursoService {
 
   async update(
     id: string,
-    updateCursoDto: UpdateCursoDto,
-  ): Promise<CursoDocument> {
+    updateCursoDto: any,
+  ) {
     try {
+      if(updateCursoDto.imagen && updateCursoDto.imagen.includes('data:image')) {
+       const url =  (await this.s3Service.uploadBase64({
+        image: updateCursoDto.imagen,
+        route: 'nic/campanas',
+      })).imageUrl;
+      updateCursoDto.imagen = url;
+      }
+      console.log('Datos a actualizar:', updateCursoDto);
+    
       const updatedCurso = await this.cursoModel
         .findByIdAndUpdate(id, updateCursoDto, { new: true })
         .exec();

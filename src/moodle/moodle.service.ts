@@ -74,7 +74,7 @@ export class MoodleService {
       courseid: courseId,
       userid: userId,
     });
-
+    console.log('Data grades:', data?.usergrades?.[0]?.gradeitems);
     const items: any[] = data?.usergrades?.[0]?.gradeitems ?? [];
     return items.map((it) => ({
       courseid: courseId,
@@ -88,6 +88,7 @@ export class MoodleService {
       percentage: it.percentageformatted ?? null,
       grademin: it.grademin,
       grademax: it.grademax,
+      categoryid: it.categoryid,
     }));
   }
 
@@ -275,8 +276,9 @@ async getCoursesWithGradesByUsername(username: string, userId?: number) {
             : null,
           min: it.grademin ?? null,
           max: it.grademax ?? null,
+          categoryid: it.categoryid ?? null,
         }));
-
+ 
       return grades.length > 0
         ? {
             id: c.id,
