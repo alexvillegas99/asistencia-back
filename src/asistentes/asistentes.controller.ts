@@ -38,6 +38,11 @@ export class AsistentesController {
     return this.asistentesService.findAll(cursoId);
   }
 
+    @Get('global/busqueda')
+  findAllGlobal(@Query('param') param: string) {
+    return this.asistentesService.findAllGlobal(param);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.asistentesService.findOne(id);

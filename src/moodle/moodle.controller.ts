@@ -56,4 +56,10 @@ export class MoodleController {
   ) {
     return this.moodleService.getCoursesWithGradesByUsername(username);
   }
+    @Get('courses/with-gradesv2')
+  async getCoursesWithGradesv2(
+    @Query('username') username: string,
+  ) {
+    return this.moodleService.getCoursesWithGradesByUsernameV2(username);
+  } 
 }

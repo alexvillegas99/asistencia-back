@@ -155,85 +155,7 @@ export class MoodleService {
     };
   }
 
-  /**
-   * Devuelve cursos del usuario con sus ítems de nota.
-   * - Estructura "limpia"
-   * - Fechas formateadas a ISO o a zona local si quieres
-   * - Paraleliza la consulta de notas por curso
-   */
-/*   async getCoursesWithGradesByUsername(username: string, userId?: number) {
-    // 1) resolver userId si no viene
-    let user = userId ? null : await this.getUserByUsername(username);
-    const uid = userId ?? user?.id;
-    if (!uid) throw new BadRequestException('Usuario no encontrado');
 
-    // 2) cursos
-    const courses = await this.getUserCourses(uid);
-
-    // 3) paralelizar las notas por curso
-    const perCourse = await Promise.all(
-      courses.map(async (c: any) => {
-        const fromOverview = c?.overviewfiles?.[0]?.fileurl as
-          | string
-          | undefined;
-        const image =
-          c?.courseimage && String(c.courseimage).trim() !== ''
-            ? (c.courseimage as string)
-            : fromOverview;
-
-        // notas del usuario en ese curso
-        const gradeItems = await this.getUserGradesForCourse(c.id, uid);
-        console.log(`Notas para el curso ${c.id}:`, gradeItems);
-
-        // limpiar / mapear ítems
-        const grades = gradeItems.map((it) => ({
-          itemId: it.itemid, // si no viene este campo o es vacio no enviart y si eel curtso no tiene items no mostrar 
-          itemName: it.itemname ?? '',
-          graderaw: it.graderaw ?? null,
-          grade: it.grade, // puede venir como número o string formateado
-          percentage: it.percentage, // ej. "85.00 %"
-          gradedategraded: it.gradedategraded
-            ? new Intl.DateTimeFormat('es-EC', {
-                timeZone: 'America/Guayaquil',
-                day: '2-digit',
-                month: 'long',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: false,
-              }).format(new Date(it.gradedategraded * 1000))
-            : null,
-
-          min: it.grademin ?? null,
-          max: it.grademax ?? null,
-          // si te llega gradedategraded en el WS, formateamos:
-          // gradedAt: it.gradedategraded ? new Date(it.gradedategraded * 1000).toISOString() : null,
-        }));
-
-        return {
-          id: c.id,
-          shortname: c.shortname ?? '',
-          fullname: c.fullname ?? '',
-          image: image ?? null,
-
-          grades, // array de ítems con sus notas
-        };
-      }),
-    );
-
-    const dtfEC = new Intl.DateTimeFormat('es-EC', {
-      timeZone: 'America/Guayaquil',
-      day: '2-digit',
-      month: 'long',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
-
-   
-    return perCourse;
-  } */
 async getCoursesWithGradesByUsername(username: string, userId?: number) {
   let user = userId ? null : await this.getUserByUsername(username);
   const uid = userId ?? user?.id;
@@ -295,5 +217,89 @@ async getCoursesWithGradesByUsername(username: string, userId?: number) {
   return perCourse.filter((c): c is NonNullable<typeof c> => c != null);
 }
 
+async getCoursesWithGradesByUsernameV2(username: string, userId?: number) {
+  let user = userId ? null : await this.getUserByUsername(username);
+  const uid = userId ?? user?.id;
+  if (!uid) throw new BadRequestException('Usuario no encontrado');
+
+  const courses = (await this.getUserCourses(uid)) ?? [];
+
+  const perCourse = await Promise.all(
+    courses.map(async (c: any) => {
+      if (!c?.id) return null;
+
+      const fromOverview = c?.overviewfiles?.[0]?.fileurl as string | undefined;
+      const image =
+        c?.courseimage && String(c.courseimage).trim() !== ''
+          ? (c.courseimage as string)
+          : fromOverview;
+
+      const gradeItems = (await this.getUserGradesForCourse(c.id, uid)) ?? [];
+
+      // Solo con idnumber válido
+      const validItems = gradeItems.filter(
+        (it) => it?.idnumber && String(it.idnumber).trim() !== '',
+      );
+
+      // Agrupar por sección calculada
+      const grouped: Record<string, any[]> = {};
+      for (const it of validItems) {
+        const section = getSectionFromIdnumber(it.idnumber);
+        if (!grouped[section]) grouped[section] = [];
+
+        grouped[section].push({
+          itemId: it.itemid ?? null,
+          idnumber: String(it.idnumber).trim().toUpperCase(),
+          itemName: it.itemname ?? '',
+          graderaw: it.graderaw ?? null,
+          grade: it.grade ?? null,
+          percentage: it.percentage ?? null,
+          gradedategraded: it?.gradedategraded
+            ? new Intl.DateTimeFormat('es-EC', {
+                timeZone: 'America/Guayaquil',
+                day: '2-digit',
+                month: 'long',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false,
+              }).format(new Date(it.gradedategraded * 1000))
+            : null,
+          min: it.grademin ?? null,
+          max: it.grademax ?? null,
+          categoryid: it.categoryid ?? null,
+        });
+      }
+
+      return Object.keys(grouped).length > 0
+        ? {
+            id: c.id,
+            shortname: c.shortname ?? '',
+            fullname: c.fullname ?? '',
+            image: image ?? null,
+            grades: grouped, // { A: [...], B: [...], Z: [...], Otros: [...] }
+          }
+        : null;
+    }),
+  );
+
+  return perCourse.filter((c): c is NonNullable<typeof c> => c != null);
+}
+
+
+
 
 }
+// Helper: determina sección a partir del idnumber
+function getSectionFromIdnumber(idnumber: any): string {
+  if (!idnumber) return 'Otros';
+  const id = String(idnumber).trim().toUpperCase();
+
+  // Dos primeras letras iguales (AA, BB, ..., ZZ) => sección = esa letra
+  // ^([A-Z])\1  => captura una letra y verifica que la siguiente sea la misma
+  const m = id.match(/^([A-Z])\1/);
+  if (m) return m[1]; // 'A', 'B', ..., 'Z'
+
+  return 'Otros';
+}
+

@@ -152,6 +152,77 @@ console.log(estudiante);
     }
   }
 
+
+// asistentes.service.ts
+async findAllGlobal(param?: string) {
+  const match: any = {};
+  if (param?.trim()) {
+    const rx = new RegExp(param.trim(), 'i');
+    match.$or = [
+      { nombre: rx },
+      { cedula: rx },
+      { correo: rx },
+    ];
+  }
+
+  return this.asistentesModel.aggregate([
+    // Filtro por búsqueda (opcional)
+    { $match: match },
+
+    // Normaliza "curso" (string) -> ObjectId si aplica
+    {
+      $addFields: {
+        cursoObjId: {
+          $cond: [
+            { $regexMatch: { input: "$curso", regex: /^[0-9a-fA-F]{24}$/ } },
+            { $toObjectId: "$curso" },
+            null
+          ]
+        }
+      }
+    },
+
+    // Join con cursos
+    {
+      $lookup: {
+        from: "cursos",           // nombre real de la colección
+        localField: "cursoObjId",
+        foreignField: "_id",
+        as: "cursoDoc"
+      }
+    },
+    { $unwind: { path: "$cursoDoc", preserveNullAndEmptyArrays: true } },
+
+    // Proyección mínima para la UI
+    {
+      $project: {
+        // asistente
+        _id: 1,
+        cedula: 1,
+        nombre: 1,
+        estado: 1,
+        asistencias: 1,
+        inasistencias: 1,
+        asistenciasInactivas: 1,
+        asistenciasAdicionales: 1,
+        createdAt: 1,
+
+        // curso necesario para mostrar en la búsqueda
+        curso: {
+          _id: "$cursoDoc._id",
+          nombre: "$cursoDoc.nombre",
+          diasActuales: "$cursoDoc.diasActuales" // opcional, útil para %
+        }
+      }
+    }
+  ]).exec();
+}
+
+
+
+
+
+
   async buscarAsistente(cedula: string, curso: string) {
     console.log(cedula, curso);
     return await this.asistentesModel.findOne({ cedula, curso });
