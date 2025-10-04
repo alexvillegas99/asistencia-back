@@ -89,6 +89,7 @@ export class MoodleService {
       grademin: it.grademin,
       grademax: it.grademax,
       categoryid: it.categoryid,
+      comentario:it.feedback
     }));
   }
 
@@ -268,6 +269,7 @@ async getCoursesWithGradesByUsernameV2(username: string, userId?: number) {
           min: it.grademin ?? null,
           max: it.grademax ?? null,
           categoryid: it.categoryid ?? null,
+          comentario:it.comentario
         });
       }
 

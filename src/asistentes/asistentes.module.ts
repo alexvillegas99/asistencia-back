@@ -11,6 +11,7 @@ import {
   AsistenteMigradoSchema,
   AsistentesMigradosModelName,
 } from './entities/asistentes-migrados.entity';
+import { ReportsService } from 'src/common/services/reports.service';
 
 @Module({
   imports: [
@@ -35,7 +36,7 @@ import {
     CursoModule,
   ],
   controllers: [AsistentesController],
-  providers: [AsistentesService],
+  providers: [AsistentesService,ReportsService],
   exports: [AsistentesService],
 })
 export class AsistentesModule {}

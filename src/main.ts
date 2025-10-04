@@ -57,7 +57,7 @@ async function bootstrap() {
    
 
    
-  await app.listen(port);
+  await app.listen(port); 
 
  
   logger.log(`Running in ${nodeEnv} mode`);

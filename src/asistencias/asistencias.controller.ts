@@ -7,10 +7,15 @@ import {
   NotFoundException,
   ConflictException,
   Query,
+  Res,
+  Header,
+  StreamableFile,
 } from '@nestjs/common';
 import { AsistenciasService } from './asistencias.service';
 import { CreateAsistenciaDto } from './dto/create-asistencia.dto';
 import { ApiQuery, ApiTags } from '@nestjs/swagger';
+import { Response } from 'express';
+const BACKGROUND_URL = 'https://corpfourier.s3.us-east-2.amazonaws.com/marca_agua/marca-reportes.png'; // 👈 cambia aquí si no usas env
 
 @ApiTags('Asistencias')
 @Controller('asistencias')
@@ -89,5 +94,28 @@ export class AsistenciasController {
     } catch (error) {
       throw error;
     }
+  }
+
+  @Get('por-cedula')
+  @ApiQuery({ name: 'cedula', required: true, example: '1850459767' })
+  async getPorCedula(@Query('cedula') cedula: string) {
+    if (!cedula?.trim()) throw new BadRequestException('La cédula es requerida.');
+    return this.asistenciasService.reportePorCedulaTotal(cedula.trim());
+  }
+
+ @Get('por-cedula/pdf')
+  @ApiQuery({ name: 'cedula', required: true })
+  @Header('Content-Type', 'application/pdf')
+  async pdfPorCedula(
+    @Query('cedula') cedula: string,
+  ): Promise<StreamableFile> {
+    const { buffer, filename } =
+      await this.asistenciasService.pdfPorCedula(cedula);
+
+    // Puedes fijar el filename dinámico aquí:
+    return new StreamableFile(buffer, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${filename}"`,
+    });
   }
 }

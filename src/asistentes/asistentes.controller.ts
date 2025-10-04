@@ -11,6 +11,8 @@ import {
   HttpException,
   HttpStatus,
   Put,
+  StreamableFile,
+  Header,
 } from '@nestjs/common';
 import { AsistentesService } from './asistentes.service';
 import { CreateAsistenteDto } from './dto/create-asistente.dto';
@@ -18,10 +20,14 @@ import { UpdateAsistenteDto } from './dto/update-asistente.dto';
 import { ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import * as XLSX from 'xlsx';
+import { ReportsService } from 'src/common/services/reports.service';
 @ApiTags('Asistentes')
 @Controller('asistentes')
 export class AsistentesController {
-  constructor(private readonly asistentesService: AsistentesService) {}
+  constructor(
+    private readonly asistentesService: AsistentesService,
+    private readonly ovReport: ReportsService,
+  ) {}
 
   @Post()
   create(@Body() createAsistenteDto: any) {
@@ -38,7 +44,7 @@ export class AsistentesController {
     return this.asistentesService.findAll(cursoId);
   }
 
-    @Get('global/busqueda')
+  @Get('global/busqueda')
   findAllGlobal(@Query('param') param: string) {
     return this.asistentesService.findAllGlobal(param);
   }
@@ -125,7 +131,7 @@ export class AsistentesController {
     },
     @Res() res: Response,
   ) {
-     let { nombre, cedula, curso, negocio, telefono, correo } = query;
+    let { nombre, cedula, curso, negocio, telefono, correo } = query;
     console.log(nombre);
     // Validar los parámetros requeridos
     if (!nombre || !cedula || !curso || !negocio) {
@@ -140,8 +146,7 @@ export class AsistentesController {
     cedula = cedula.trim();
 
     if (telefono) telefono = telefono.trim();
-  if (correo) correo = correo.trim();
-
+    if (correo) correo = correo.trim();
 
     try {
       // Llama al servicio para agregar el asistente al curso
@@ -150,8 +155,8 @@ export class AsistentesController {
         cedula,
         curso,
         negocio,
-         telefono,
-      correo,
+        telefono,
+        correo,
       });
       await this.asistentesService.generateQrForAsistente(result, res);
       // Responde con un mensaje claro
@@ -227,7 +232,7 @@ export class AsistentesController {
       // Llama al servicio para agregar el asistente al curso
       return await this.asistentesService.cambiarEstadoAsistente({
         cedula,
-        estado
+        estado,
       });
     } catch (error) {
       console.error('Error al agregar asistente:', error.message);
@@ -381,4 +386,18 @@ export class AsistentesController {
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(buf);
   }
+
+  @Get('ov/:cedula')
+  @Header('Content-Type', 'application/pdf')
+ async ov(@Param('cedula') cedula: string): Promise<StreamableFile> {
+  const { buffer, filename } = await this.ovReport.pdfOVPorCedula(
+    cedula,
+    (c) => this.asistentesService.buscarPorCedula(c),
+  );
+
+  return new StreamableFile(buffer, {
+    type: 'application/pdf',
+    disposition: `attachment; filename="${filename}"`,
+  });
+}
 }

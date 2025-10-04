@@ -1,9 +1,25 @@
-import { Controller, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
+import { AsistentesService } from 'src/asistentes/asistentes.service';
+import {
+  Controller,
+  Get,
+  Header,
+  NotFoundException,
+  Param,
+  ParseIntPipe,
+  Query,
+  StreamableFile,
+} from '@nestjs/common';
 import { MoodleService } from './moodle.service';
+import { ApiQuery } from '@nestjs/swagger';
+import { ReportsService } from 'src/common/services/reports.service';
 
 @Controller('moodle')
 export class MoodleController {
-  constructor(private readonly moodleService: MoodleService) {}
+  constructor(
+    private readonly moodleService: MoodleService,
+    private readonly asistentesService:AsistentesService,
+    private readonly reportsService: ReportsService,
+  ) {}
 
   // 1) Buscar usuario por username
   @Get('users/by-username/:username')
@@ -42,24 +58,32 @@ export class MoodleController {
     return this.moodleService.getGradesReportByUsername(username, uid);
   }
 
-   @Get('courses/clean')
-  async getCleanCourses(
-    @Query('username') username: string,
-  ) {
- 
+  @Get('courses/clean')
+  async getCleanCourses(@Query('username') username: string) {
     return this.moodleService.getCleanCoursesByUsername(username);
   }
 
   @Get('courses/with-grades')
-  async getCoursesWithGrades(
-    @Query('username') username: string,
-  ) {
+  async getCoursesWithGrades(@Query('username') username: string) {
     return this.moodleService.getCoursesWithGradesByUsername(username);
   }
-    @Get('courses/with-gradesv2')
-  async getCoursesWithGradesv2(
-    @Query('username') username: string,
-  ) {
+  @Get('courses/with-gradesv2')
+  async getCoursesWithGradesv2(@Query('username') username: string) {
     return this.moodleService.getCoursesWithGradesByUsernameV2(username);
-  } 
+  }
+
+  @Get('notas/pdf')
+  @Header('Content-Type', 'application/pdf')
+  async notasPorCedula(@Query('cedula') cedula: string): Promise<StreamableFile> {
+    const { buffer, filename } = await this.reportsService.pdfNotasPorUsername(
+      cedula,
+      (u) => this.moodleService.getCoursesWithGradesByUsernameV2(u),
+      (u) => this.asistentesService.buscarPorCedula(u),
+    );
+
+    return new StreamableFile(buffer, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${filename}"`,
+    });
+  }
 }

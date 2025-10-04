@@ -20,6 +20,29 @@ import { CursoDocument, CursoModelName } from 'src/curso/entities/curso.entity';
 import axios from 'axios';
 import { cursorTo } from 'readline';
 import { Cron } from '@nestjs/schedule';
+import PDFDocument = require('pdfkit');
+type RegistroDia = { fecha: string; horas: string[] };
+type ReportePorCedula = {
+  cedula: string;
+  asistente?: { id?: string; nombre?: string };
+  curso: {
+    id?: string;
+    nombre?: string;
+    estado?: string;
+    diasActuales?: number; // clases dictadas
+    diasCurso?: number;    // plan
+    updatedAt?: string;
+    imagen?: string;
+  };
+  resumen: {
+    totalRegistros: number;
+    ultimaFecha?: string;
+    diasConAsistencia: number;
+    porcentajeAsistencia: number;
+    totalAsistenciasAcumuladas: number;
+  };
+  registros: RegistroDia[];
+};
 @Injectable()
 export class AsistenciasService {
 
@@ -528,4 +551,398 @@ const result = await this.cursosModel.findOneAndUpdate(
       }
     }
   }
+async reportePorCedulaTotal(cedula: string) {
+  // 1) Asistente
+  const asistente = await this.asistentesModel.findOne({ cedula }).lean().exec();
+  if (!asistente) {
+    throw new NotFoundException(`No existe asistente con cédula ${cedula}`);
+  }
+
+  // 2) Curso (acepta ObjectId o nombre string)
+  let cursoDoc: any = null;
+  const cursoField = asistente.curso;
+
+  if (cursoField && Types.ObjectId.isValid(String(cursoField))) {
+    cursoDoc = await this.cursosModel.findById(cursoField).lean().exec();
+  } else if (typeof cursoField === 'string') {
+    cursoDoc = await this.cursosModel.findOne({ nombre: cursoField }).lean().exec();
+  }
+
+  const curso: any = cursoDoc
+    ? {
+        id: String(cursoDoc._id),
+        nombre: cursoDoc.nombre ?? null,
+        estado: cursoDoc.estado ?? null,
+        diasActuales: typeof cursoDoc.diasActuales === 'number' ? cursoDoc.diasActuales : null,
+        diasCurso: typeof cursoDoc.diasCurso === 'number' ? cursoDoc.diasCurso : null,
+        updatedAt: cursoDoc.updatedAt ?? null,
+        imagen: cursoDoc.imagen ?? null,
+      }
+    : {
+        id: cursoField && Types.ObjectId.isValid(String(cursoField)) ? String(cursoField) : null,
+        nombre: typeof cursoField === 'string' ? cursoField : null,
+        estado: null,
+        diasActuales: null,
+        diasCurso: null,
+        updatedAt: null,
+        imagen: null,
+      };
+
+  // 3) Agregación: registros por fecha + resumen total
+  const [aggr] = await this.asistenciaModel.aggregate([
+    { $match: { cedula } },
+    { $sort: { fecha: -1, createdAt: 1 } },
+    {
+      $facet: {
+        registros: [
+          {
+            $group: {
+              _id: '$fecha',
+              horas: { $push: '$hora' },
+              registrosEnElDia: { $sum: 1 },
+            },
+          },
+          { $sort: { _id: -1 } },
+          {
+            $project: {
+              _id: 0,
+              fecha: '$_id',
+              horas: 1,
+              registrosEnElDia: 1,
+            },
+          },
+        ],
+        resumen: [
+          {
+            $group: {
+              _id: null,
+              totalRegistros: { $sum: 1 },
+              ultimaFecha: { $max: '$fecha' },
+              diasConAsistenciaSet: { $addToSet: '$fecha' },
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              totalRegistros: 1,
+              ultimaFecha: 1,
+              diasConAsistencia: { $size: '$diasConAsistenciaSet' },
+            },
+          },
+        ],
+      },
+    },
+    {
+      $project: {
+        registros: 1,
+        resumen: {
+          $ifNull: [
+            { $arrayElemAt: ['$resumen', 0] },
+            { totalRegistros: 0, ultimaFecha: null, diasConAsistencia: 0 },
+          ],
+        },
+      },
+    },
+  ]).exec();
+
+  // 4) Porcentaje de asistencia estimado (si hay datos de curso y del asistente)
+  const asistenciasActivas = Number(asistente.asistencias ?? 0);
+  const asistenciasInactivas = Number(asistente.asistenciasInactivas ?? 0);
+  const asistenciasAdicionales = Number(asistente.asistenciasAdicionales ?? 0);
+  const totalAsistenciasAcumuladas = asistenciasActivas + asistenciasInactivas + asistenciasAdicionales;
+
+  const diasActuales = typeof curso.diasActuales === 'number' ? curso.diasActuales! : 0;
+  const porcentajeAsistencia =
+    diasActuales > 0
+      ? Math.min(100, Math.round((totalAsistenciasAcumuladas / diasActuales) * 100))
+      : 0;
+
+  return {
+    cedula,
+    asistente: {
+      id: String(asistente._id),
+      nombre: asistente.nombre ?? null,
+    },
+    curso, // incluye: id, nombre, estado, diasActuales, diasCurso, updatedAt, imagen
+    resumen: {
+      ...(aggr?.resumen ?? { totalRegistros: 0, ultimaFecha: null, diasConAsistencia: 0 }),
+      porcentajeAsistencia, // 👈 agregado para UI
+      totalAsistenciasAcumuladas,
+    },
+    registros: aggr?.registros ?? [],
+  };
+}
+
+/* 
+async pdfPorCedula(cedula: string): Promise<Buffer> {
+  const data:any = await this.reportePorCedulaTotal(cedula);
+
+  const doc = new PDFDocument({ size: 'A4', margin: 40 });
+  const chunks: Buffer[] = [];
+  return await new Promise<Buffer>((resolve, reject) => {
+    doc.on('data', (c) => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    // Encabezado
+    doc.fontSize(16).text('Reporte de Asistencia', { align: 'center' });
+    doc.moveDown(0.5);
+    doc.fontSize(11).text(`Cédula: ${data.cedula}`);
+    doc.text(`Asistente: ${data.asistente.asistenteNombre ?? '-'}`);
+    doc.text(`Curso: ${data.curso.nombre ?? '-'}`);
+    doc.text(`Estado: ${data.curso.estado ?? '-'}`);
+    doc.text(`Días curso: ${data.curso.diasActuales ?? 0}/${data.curso.diasCurso ?? 0}`);
+    doc.text(`% Asistencia: ${data.resumen.porcentajeAsistencia}%`);
+    doc.moveDown();
+
+    // Registros
+    doc.fontSize(13).text('Registros', { underline: true });
+    doc.moveDown(0.3);
+
+    data.registros.forEach((r) => {
+      doc.fontSize(11).text(`${r.fecha}  —  ${r.horas.join(', ')}`);
+    });
+
+    doc.end();
+  });
+} */
+
+
+  private async fetchImageBuffer(url: string): Promise<Buffer | null> {
+    try {
+      const { data } = await axios.get(url, { responseType: 'arraybuffer' });
+      return Buffer.from(data);
+    } catch {
+      return null;
+    }
+  }
+
+private drawBackground(doc: PDFKit.PDFDocument, bg?: Buffer | null) {
+  if (!bg) return;
+  doc.save();
+  
+  doc.image(bg, 0, 0, {
+    fit: [doc.page.width, doc.page.height],
+    align: 'center',
+    valign: 'center',
+  });
+  doc.restore();
+}
+
+private drawHeaderBlock(doc: PDFKit.PDFDocument, data: ReportePorCedula) {
+  const nombreCurso = (data.curso.nombre || '').replaceAll('_', ' ').trim();
+  const clases = data.curso.diasActuales ?? 0;
+  const asistidos = data.resumen.diasConAsistencia ?? 0;
+  const porcentaje = data.resumen.porcentajeAsistencia ?? 0;
+
+  // Dimensiones del bloque
+  const x = 40;
+  const w = doc.page.width - 80;
+  const h = 110;
+  const y = doc.y;
+
+  // Capa blanca muy sutil bajo la tarjeta para “matar” el fondo
+  doc.save();
+  doc.roundedRect(x - 6, y - 6, w + 12, h + 12, 10)
+     .fillOpacity(0.6).fill('#ffffff').fillOpacity(1);
+  doc.restore();
+
+  // Tarjeta
+  doc.save();
+  doc.roundedRect(x, y, w, h, 12)
+     .fill('#1a1d29') // base casi negra
+     .strokeColor('#2b2f41').lineWidth(1).stroke();
+  doc.restore();
+
+  const pad = 16;
+  const left = x + pad;
+  const right = x + w / 2 + 8; // “columna” derecha
+
+  // Título
+  doc.font('Helvetica-Bold').fontSize(16).fillColor('#e9ecf4');
+  doc.text('Reporte de Asistencia', left, y + pad, { width: w - pad * 2 });
+
+  // Curso (2 líneas máx) + datos
+  const topText = y + pad + 20;
+
+  doc.font('Helvetica').fontSize(11).fillColor('#b8becc');
+  // Curso (hasta 2 líneas, luego '…')
+  doc.text(nombreCurso || '—', left, topText, {
+    width: (w / 2) - pad,
+    height: 32,
+    ellipsis: true,
+  });
+
+  // Cédula y Asistente debajo
+  doc.moveDown(0.2);
+  doc.text(`Cédula: ${data.cedula}`, left, doc.y);
+  doc.text(`Asistente: ${data.asistente?.nombre ?? '—'}`, left, doc.y);
+  doc.text(`Estado: ${data.curso.estado ?? '—'}`, left, doc.y);
+
+  // Columna derecha: Asistidos/Clases y Porcentaje
+  doc.font('Helvetica').fontSize(11).fillColor('#cdd2de');
+  const rTop = topText;
+  doc.text(`Asistidos: ${asistidos}`, right, rTop, { width: w/2 - pad });
+  doc.text(`Clases: ${clases}`, right, doc.y);
+  doc.moveDown(0.3);
+
+/*   doc.font('Helvetica-Bold').fontSize(20).fillColor('#e9ecf4');
+  doc.text(`${porcentaje}%`, right, doc.y + 2); */
+
+  // Barra de progreso
+ // Barra de progreso (opcional)
+/* const ratio = clases > 0 ? Math.max(0, Math.min(1, asistidos / clases)) : 0;
+const barX = left;
+const barY = y + h - pad - 12; // un poquito más arriba para evitar solape
+const barW = w - pad * 2;
+const barH = 8;
+
+doc.save();
+doc.roundedRect(barX, barY, barW, barH, 6).fill('#2a2e3f'); */
+/* if (ratio > 0) {
+  // tramo coloreado
+  const fillW = Math.max(10, barW * ratio); // mínimo 10px para que se vea
+  doc.roundedRect(barX, barY, Math.min(fillW, barW), barH, 6).fill('#7C3AED');
+} */
+doc.restore();
+
+// Porcentaje justo encima, centrado a la derecha
+/* doc.font('Helvetica-Bold').fontSize(14).fillColor('#e9ecf4');
+doc.text(`${porcentaje}%`, barX + barW - 60, barY - 16, { width: 60, align: 'right' });
+ */
+}
+private drawFooter(doc: PDFKit.PDFDocument, page: number, total: number) {
+  doc.font('Helvetica').fontSize(9).fillColor('#9aa0ae');
+  const ts = new Date().toLocaleString('es-EC');
+  doc.text(`Generado: ${ts}`, 40, doc.page.height - 40, { align: 'left', width: doc.page.width / 2 - 40 });
+  doc.text(`Página ${page} / ${total}`, doc.page.width / 2, doc.page.height - 40, {
+    align: 'right',
+    width: doc.page.width / 2 - 40,
+  });
+}
+ private drawTable(
+  doc: PDFKit.PDFDocument,
+  rows: RegistroDia[],
+  opts: { y: number; marginX?: number } = { y: 0 },
+) {
+  const marginX = opts.marginX ?? 40;
+  let y = opts.y;
+
+  const w = doc.page.width - marginX * 2;
+  const colFecha = 120;
+  const colHoras = w - colFecha;
+
+  // Header
+  doc.save();
+  doc.roundedRect(marginX, y, w, 22, 8).fill('#1f2333');
+  doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(10.5);
+  doc.text('Fecha', marginX + 12, y + 5, { width: colFecha - 24, align: 'left' });
+  doc.text('Horas', marginX + colFecha + 12, y + 5, { width: colHoras - 24, align: 'left' });
+  doc.restore();
+  y += 24;
+
+  // Filas
+doc.font('Helvetica').fontSize(10);
+const rowH = 20;
+
+const drawHeaderAgain = () => {
+  doc.save();
+  doc.roundedRect(marginX, y, w, 22, 8).fill('#1f2333');
+  doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(10.5);
+  doc.text('Fecha', marginX + 12, y + 5, { width: colFecha - 24 });
+  doc.text('Horas', marginX + colFecha + 12, y + 5, { width: colHoras - 24 });
+  doc.restore();
+  y += 24;
+};
+
+for (let i = 0; i < rows.length; i++) {
+  if (y + rowH > doc.page.height - 60) {
+    doc.addPage();
+    y = 40;
+    drawHeaderAgain();
+  }
+
+  const isZebra = i % 2 === 0;       // true = fondo oscuro (zebra)
+  const dateColor = isZebra ? '#cfd3df' : '#7C3AED';
+  const hoursColor = isZebra ? '#cfd3df' : '#7C3AED'; // 👈 morado cuando NO hay fondo
+
+  // Zebra sutil (solo en impares según tu preferencia)
+  if (isZebra) {
+    doc.save();
+    doc.rect(marginX, y, w, rowH).fill('#151826');
+    doc.restore();
+  }
+
+  // Borde inferior sutil
+  doc.save();
+  doc.lineWidth(0.5).strokeColor('#25293a')
+     .moveTo(marginX, y + rowH).lineTo(marginX + w, y + rowH).stroke();
+  doc.restore();
+
+  // Fecha
+  doc.fillColor(dateColor);
+  doc.text(rows[i].fecha ?? '—', marginX + 12, y + 4, { width: colFecha - 24 });
+
+  // Horas
+  const horasTxt = Array.isArray(rows[i].horas) && rows[i].horas.length
+    ? rows[i].horas.join('  •  ')
+    : '—';
+  doc.fillColor(hoursColor);
+  doc.text(horasTxt, marginX + colFecha + 12, y + 4, { width: colHoras - 24 });
+
+  y += rowH;
+}
+}
+
+async pdfPorCedula(cedula: string): Promise<{ buffer: Buffer; filename: string }> {
+  // 🔧 URL de fondo (cámbiala si quieres usar otra)
+  const BACKGROUND_URL = 'https://corpfourier.s3.us-east-2.amazonaws.com/marca_agua/marca-reportes.png';
+
+  const data = await this.reportePorCedulaTotal(cedula);
+  if (!data) throw new NotFoundException('Sin datos');
+
+  const filename = `asistencia_${cedula}.pdf`;
+  const bg = BACKGROUND_URL ? await this.fetchImageBuffer(BACKGROUND_URL) : null;
+
+  const doc = new PDFDocument({ size: 'A4', margin: 40 });
+  const chunks: Buffer[] = [];
+
+  // Fondo en cada página nueva
+  doc.on('pageAdded', () => {
+    this.drawBackground(doc, bg);
+    // (opcional) footer por página: this.drawFooter(doc, doc.page.number, 0);
+  });
+
+  const result = await new Promise<Buffer>((resolve, reject) => {
+    doc.on('data', (c) => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    // Fondo en la primera página
+    this.drawBackground(doc, bg);
+
+    // Encabezado
+    this.drawHeaderBlock(doc, data);
+
+    // Título de tabla
+    doc.moveDown(0.3);
+ /*    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(12).text('Registros por fecha'); */
+    doc.moveDown(0.4);
+
+    // Tabla
+const gap = 45;                    // píxeles de aire
+const startY = doc.y + gap;        // doc.y sigue en el valor previo
+this.drawTable(doc, data.registros ?? [], { y: startY, marginX: 40 });
+
+    // Footer simple (fecha de generación)
+    doc.moveDown(1);
+    doc.font('Helvetica').fontSize(9).fillColor('#9aa0ae');
+    doc.text(`Generado: ${new Date().toLocaleString('es-EC')}`, { align: 'right' });
+
+    doc.end();
+  });
+
+  return { buffer: result, filename };
+}
+
 }
