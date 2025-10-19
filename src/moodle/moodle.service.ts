@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 @Injectable()
 export class MoodleService {
+
   private readonly baseUrl: string;
   private readonly token: string;
   private readonly http: AxiosInstance;
@@ -74,7 +75,6 @@ export class MoodleService {
       courseid: courseId,
       userid: userId,
     });
-    console.log('Data grades:', data?.usergrades?.[0]?.gradeitems);
     const items: any[] = data?.usergrades?.[0]?.gradeitems ?? [];
     return items.map((it) => ({
       courseid: courseId,
@@ -285,6 +285,121 @@ async getCoursesWithGradesByUsernameV2(username: string, userId?: number) {
     }),
   );
 
+  return perCourse.filter((c): c is NonNullable<typeof c> => c != null);
+}
+
+async getCoursesWithGradesByUsernameV3(username: string, userId?: number) {
+  // ── Helpers de saneo ─────────────────────────────────────────────────────────
+  const isValidIdnumber = (v: any): boolean => {
+    const s = String(v ?? "").trim();
+    return s.length > 0;
+  };
+
+  const normalizeName = (v: any): string =>
+    String(v ?? "").replace(/\s+/g, " ").trim();
+
+  const isValidName = (v: any): boolean => {
+    const s = normalizeName(v);
+    if (!s) return false;              // vacío o solo espacios
+    if (s === "-" || s === "—") return false;
+    return true;
+  };
+
+  // Acepta 0 (cero), enteros y decimales; permite string numérico ("45", "19.5").
+  const hasNumberGrade = (v: any): boolean => {
+    if (v === 0 || v === "0") return true;
+    if (v === null || v === undefined) return false;
+    const s = String(v).trim();
+    if (!s || s === "-" || s === "—") return false;
+    const n = Number(s);
+    return Number.isFinite(n);
+  };
+
+  // ── Resolución de usuario ────────────────────────────────────────────────────
+  const user = userId ? null : await this.getUserByUsername(username);
+  const uid = userId ?? user?.id;
+  if (!uid) throw new BadRequestException("Usuario no encontrado");
+
+  // ── Cursos del usuario ───────────────────────────────────────────────────────
+  const courses = (await this.getUserCourses(uid)) ?? [];
+
+  const perCourse = await Promise.all(
+    courses.map(async (c: any) => {
+      if (!c?.id) return null;
+
+      const fromOverview = c?.overviewfiles?.[0]?.fileurl as string | undefined;
+      const image =
+        c?.courseimage && String(c.courseimage).trim() !== ""
+          ? (c.courseimage as string)
+          : fromOverview;
+
+      // Calificaciones crudas
+      const gradeItems = (await this.getUserGradesForCourse(c.id, uid)) ?? [];
+
+      // 1) idnumber válido
+      // 2) nombre válido
+      // 3) graderaw numérico
+      const validItems = gradeItems.filter(
+        (it) =>
+          isValidIdnumber(it?.idnumber) &&
+          isValidName(it?.itemname) &&
+          hasNumberGrade(it?.graderaw),
+      );
+
+      // Agrupar por sección calculada
+      const grouped: Record<string, any[]> = {};
+      for (const it of validItems) {
+        const section = getSectionFromIdnumber(it.idnumber); // ← tu helper existente
+        if (!grouped[section]) grouped[section] = [];
+
+        grouped[section].push({
+          itemId: it.itemid ?? null,
+          idnumber: String(it.idnumber).trim().toUpperCase(),
+          itemName: normalizeName(it.itemname),
+          // ya garantizamos que es numérico → casteamos a number
+          graderaw: Number(String(it.graderaw).trim()),
+          grade: it.grade ?? null,
+          percentage: it.percentage ?? null,
+          gradedategraded: it?.gradedategraded
+            ? new Intl.DateTimeFormat("es-EC", {
+                timeZone: "America/Guayaquil",
+                day: "2-digit",
+                month: "long",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: false,
+              }).format(new Date(it.gradedategraded * 1000))
+            : null,
+          min: it.grademin ?? null,
+          max: it.grademax ?? null,
+          categoryid: it.categoryid ?? null,
+          comentario: it.comentario,
+        });
+      }
+
+      // Quitar secciones vacías por si acaso
+      const cleanedSections: Record<string, any[]> = {};
+      for (const key of Object.keys(grouped)) {
+        if (Array.isArray(grouped[key]) && grouped[key].length > 0) {
+          cleanedSections[key] = grouped[key];
+        }
+      }
+
+      // Si no quedó ninguna sección con elementos, descartar el curso
+      if (Object.keys(cleanedSections).length === 0) return null;
+
+      return {
+        id: c.id,
+        shortname: c.shortname ?? "",
+        fullname: c.fullname ?? "",
+        image: image ?? null,
+        grades: cleanedSections, // { A: [...], B: [...], ... }
+      };
+    }),
+  );
+
+  // Solo cursos válidos
   return perCourse.filter((c): c is NonNullable<typeof c> => c != null);
 }
 

@@ -17,6 +17,7 @@ import { CampanasModule } from './campanas/campanas.module';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { MoodleModule } from './moodle/moodle.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { SkoolModule } from './modules/skool/skool.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
@@ -32,6 +33,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     CampanasModule,
     NotificacionesModule,
     MoodleModule,
+    SkoolModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -3,7 +3,7 @@ import { AppModule } from './app.module';
 import { Logger, ValidationPipe } from '@nestjs/common';
 
 import { urlencoded, json } from 'express';
-import { NODE_ENV, PORT } from './config/config.env'; 
+import { NODE_ENV, PORT } from './config/config.env';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as https from 'https';
@@ -16,8 +16,6 @@ import {
 } from '@nestjs/platform-express';
 import { cacheControlMiddleware } from './common/middleware/middleware';
 import { initSwagger } from './app.swagger';
-
-
 
 async function bootstrap() {
   const server = express();
@@ -46,20 +44,22 @@ async function bootstrap() {
   server.use(cacheControlMiddleware);
 
   app.useGlobalPipes(
-    new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }),
+    new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transformOptions: { enableImplicitConversion: true },
+    }),
   );
   const config = app.get(ConfigService);
-  const port = config.get(PORT); 
- 
+  const port = config.get(PORT);
+
   const nodeEnv = config.get(NODE_ENV);
 
-    initSwagger(app);
-   
+  initSwagger(app);
 
-   
-  await app.listen(port); 
+  await app.listen(port);
 
- 
   logger.log(`Running in ${nodeEnv} mode`);
   /*   logger.log(`App https running in ${serverHttps.address()['port']}/api`); */
   logger.log(`App running in ${await app.getUrl()}/api`);

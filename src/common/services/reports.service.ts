@@ -246,33 +246,83 @@ private readonly COLORS = {
                 {
                   margin: [0, 10, 0, 0],
                   table: {
-                    headerRows: 1,
-                    widths: ['*', 55, 45, 140],
-                    body: [
-                      [
-                        { text: 'Actividad', style: 'th', alignment: 'left'  },
-                        { text: 'Nota',      style: 'th', alignment: 'right' },
-                        { text: 'Máx',       style: 'th', alignment: 'right' },
-                        { text: 'Fecha',     style: 'th', alignment: 'right' },
-                      ],
-                      ...s.visibles.map((it: any) => {
-                        const actividad = it.comentario
-                          ? `${show(it.itemName)}  ·  ${show(it.idnumber)}\n— ${it.comentario}`
-                          : `${show(it.itemName)}  ·  ${show(it.idnumber)}`;
-                        return [
-                          { text: actividad,               style: 'td', alignment: 'left'  },
-                          { text: show(it.graderaw),       style: 'td', alignment: 'right' },
-                          { text: show(it.max),            style: 'td', alignment: 'right' },
-                          { text: show(it.gradedategraded),style: 'td', alignment: 'right' },
-                        ];
-                      }),
-                      [
-                        { text: 'Total sección', style: 'tdTotal', alignment: 'left'  },
-                        { text: show(s.score),   style: 'tdTotal', alignment: 'right' },
-                        { text: show(s.maxTotal),style: 'tdTotal', alignment: 'right' },
-                        { text: s.percentSobreTotal !== null ? `${s.percentSobreTotal}%` : '—', style: 'tdTotal', alignment: 'right' },
-                      ],
-                    ],
+                      headerRows: 1,
+                        widths: ['*', 40, 40, 36, 100, 140],
+
+                        body: [
+                          [
+                            { text: 'Actividad', style: 'th' },
+                            { text: 'Nota', style: 'th', alignment: 'right' },
+                            { text: 'Máx', style: 'th', alignment: 'right' },
+                            { text: '%', style: 'th', alignment: 'right' },
+                            { text: 'Fecha', style: 'th', alignment: 'right' },
+                            { text: 'Comentario', style: 'th' },
+                          ],
+                          ...s.visibles.map((it: any) => {
+                            const p =
+                              it.graderaw != null && it.max && it.max > 0
+                                ? Math.round(
+                                    (it.graderaw / it.max) * 100 * 100
+                                  ) / 100
+                                : null;
+                            return [
+                              {
+                                text: `${show(it.itemName)}  ·  ${show(
+                                  it.idnumber
+                                )}`,
+                                style: 'td',
+                              },
+                              {
+                                text: show(it.graderaw),
+                                alignment: 'right',
+                                style: 'td',
+                              },
+                              {
+                                text: show(it.max),
+                                alignment: 'right',
+                                style: 'td',
+                              },
+                              {
+                                text: p != null ? `${p}%` : '—',
+                                alignment: 'right',
+                                style: 'td',
+                              },
+                              {
+                                text: show(it.gradedategraded),
+                                alignment: 'right',
+                                style: 'td',
+                              },
+                              {
+                                text: show(it.comentario),
+                                style: 'td',
+                                noWrap: false,
+                              },
+                            ];
+                          }),
+                          [
+                            { text: 'Total sección', style: 'tdTotal' },
+                            {
+                              text: show(s.score),
+                              alignment: 'right',
+                              style: 'tdTotal',
+                            },
+                            {
+                              text: show(s.maxTotal),
+                              alignment: 'right',
+                              style: 'tdTotal',
+                            },
+                            {
+                              text:
+                                s.percentSobreTotal !== null
+                                  ? `${s.percentSobreTotal}%`
+                                  : '—',
+                              alignment: 'right',
+                              style: 'tdTotal',
+                            },
+                            { text: '', alignment: 'right', style: 'tdTotal' }, // fecha vacío
+                            { text: '', style: 'tdTotal' }, // comentario vacío
+                          ],
+                        ],
                   },
                   layout: {
                     fillColor: (ri: number) => (ri === 0 ? prim : ri % 2 === 0 ? zebra : null),
@@ -563,11 +613,11 @@ const { prim, primSuave, textoSuave, borde, cardBg, headerBg, zebra } = this.COL
                     },
                   ],
                 },
-                {
+               /*  {
                   margin: [10, 0, 10, 6],
                   text: `Comentario: ${show(st?.comentario)}`,
                   style: 'td',
-                },
+                }, */ 
                 {
                   margin: [0, 6, 0, 0],
                   table: {
