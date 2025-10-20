@@ -466,13 +466,13 @@ const result = await this.cursosModel.findOneAndUpdate(
 
           const negocio = asistenteID.negocio;
           console.log(
-            `https://nicpreu.bitrix24.es/rest/1/2dc3j6lin4etym89/crm.deal.update?ID=${negocio.trim()}&UF_CRM_1738432398938=${formatoFecha}`,
+            `https://nicpreu.bitrix24.es/rest/1/2dc3j6lin4etym89/crm.deal.update`,
           );
           // Enviar la fecha en la URL
           const data = {
             ID: negocio.trim(),
             fields: {
-              UF_CRM_1738432398938: formatoFecha,
+              UF_CRM_1760998213: formatoFecha,
             },
           };
 

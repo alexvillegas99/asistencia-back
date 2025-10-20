@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { AsistenciasService } from './asistencias.service';
 import { CreateAsistenciaDto } from './dto/create-asistencia.dto';
-import { ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 const BACKGROUND_URL = 'https://corpfourier.s3.us-east-2.amazonaws.com/marca_agua/marca-reportes.png'; // 👈 cambia aquí si no usas env
 
@@ -42,6 +42,20 @@ export class AsistenciasController {
 
 
   @Post('registrar')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        cedula: { type: 'string', example: '1850459767' },
+        cursoId: { type: 'string', example: '64234c3bdcfa0f3f34097e78' },
+      },
+      required: ['cedula', 'cursoId'],
+      example: {
+        cedula: '1850459767',
+        cursoId: '64234c3bdcfa0f3f34097e78',
+      },
+    },
+  })
   async registrarAsistencia(@Body() data: any) {
     try {
       console.log('Registrar asistencia');
@@ -72,7 +86,7 @@ export class AsistenciasController {
       // Registrar asistencia si no existe en el día actual
       const asistenciaRegistrada =
         await this.asistenciasService.registrarAsistencia(
-          data.cedula,
+          data.cedula, 
           data.cursoId,
         ); 
       if (asistenciaRegistrada === 'completo') {
