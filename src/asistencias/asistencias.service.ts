@@ -357,12 +357,20 @@ export class AsistenciasService {
 
   async registrarAsistencia(cedula: string, cursoId: string): Promise<string> {
     try {
-      //Agregar Dias para probar
-      const ahora = new Date(); // Fecha y hora actual
-      const fechaHoy = ahora.toISOString().split('T')[0]; // Fecha actual en formato YYYY-MM-DD
-      const horaActual = ahora.toTimeString().split(' ')[0]; // Hora actual en formato HH:mm:ss
+      // Agregar Días para probar
+const ahora = new Date(); // Fecha y hora actual
 
-      console.log(`Fecha actual: ${fechaHoy}, Hora actual: ${horaActual}`);
+// ✅ Solo corregimos la fecha local (sin UTC)
+const año = ahora.getFullYear();
+const mes = String(ahora.getMonth() + 1).padStart(2, '0');
+const dia = String(ahora.getDate()).padStart(2, '0');
+const fechaHoy = `${año}-${mes}-${dia}`; // Fecha actual en formato YYYY-MM-DD
+
+// La hora sí puede quedarse igual
+const horaActual = ahora.toTimeString().split(' ')[0]; // Hora actual en formato HH:mm:ss
+
+console.log(`Fecha actual: ${fechaHoy}, Hora actual: ${horaActual}`);
+
 
       // Verificar cuántos registros existen hoy para el usuario
       const registrosHoy = await this.asistenciaModel

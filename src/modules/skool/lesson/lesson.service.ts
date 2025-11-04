@@ -4,7 +4,8 @@ import { LessonRepo } from './repos/lesson.repo';
 
 import { CreateLessonDto } from './dto/create-lesson.dto';
 import { UpdateLessonDto } from './dto/update-lesson.dto';
-
+const asObjectId = (v: string) => new Types.ObjectId(v);
+const isValidId = (v: any) => typeof v === 'string' && Types.ObjectId.isValid(v);
 @Injectable()
 export class LessonService {
   constructor(private readonly repo: LessonRepo) {}
@@ -44,24 +45,67 @@ export class LessonService {
     return this.repo.countBySection(sectionId);
   }
 
-  async update(id: string, dto: any) {
-    // mover de sección: calcula nuevo sortIndex al final
-    if (dto.sectionId) {
-      const newIndex = (await this.repo.lastIndex(
-        (dto as any).courseId || '', // opcional si lo mandas
-        dto.sectionId,
-      )) + 1;
+    asObjectId(id: string | Types.ObjectId) {
+    return typeof id === 'string' ? new Types.ObjectId(id) : id;
+  }
 
-      const moved = await this.repo.updateById(id, {
-        ...dto,
-        sectionId: new Types.ObjectId(dto.sectionId),
-        sortIndex: newIndex,
-      });
+    private buildSafePatch(dto: any): any {
+    const patch: any = {};
+
+    if (dto.title !== undefined) patch.title = String(dto.title).trim();
+    if (dto.content !== undefined) patch.content = String(dto.content);
+    if (dto.status !== undefined) patch.status = String(dto.status);
+    if (dto.isPreview !== undefined) patch.isPreview = !!dto.isPreview;
+    if (dto.durationSec !== undefined) {
+      const n = Number(dto.durationSec);
+      patch.durationSec = Number.isFinite(n) ? n : 0;
+    }
+
+    // ⚠️ Validación solicitada: solo setear si es ObjectId válido
+    if (dto.videoMediaId !== undefined) {
+      if (isValidId(dto.videoMediaId)) {
+        patch.videoMediaId = asObjectId(dto.videoMediaId);
+      }
+      // Si NO es válido, se ignora: NO setea ni borra el campo existente.
+    }
+
+    // No permitir cambiar sortIndex manualmente vía dto
+    delete patch.sortIndex;
+
+    return patch;
+  }
+
+ async update(id: string, dto: any) {
+    // Caso: mover de sección → calcular nuevo sortIndex al final de la nueva sección
+    if (dto.sectionId) {
+      const newSectionId = asObjectId(dto.sectionId);
+
+      // Intenta obtener courseId desde dto o, si no viene, desde la lección actual
+      let courseIdForIndex: string | Types.ObjectId | undefined = dto.courseId;
+      if (!courseIdForIndex) {
+        const current = await this.repo.findById(id);
+        if (!current) throw new NotFoundException('Lección no encontrada');
+        courseIdForIndex = current.courseId;
+      }
+
+      const newIndex =
+        (await this.repo.lastIndex(
+          String(courseIdForIndex),
+          String(newSectionId),
+        )) + 1;
+
+      const patch = this.buildSafePatch(dto);
+      patch.sectionId = newSectionId;
+      patch.sortIndex = newIndex; // se recalcula
+
+      const moved = await this.repo.updateById(id, patch);
       if (!moved) throw new NotFoundException('Lección no encontrada');
       return moved;
     }
 
-    const upd = await this.repo.updateById(id, dto);
+    // Update normal (misma sección)
+    const patch = this.buildSafePatch(dto);
+    const upd = await this.repo.updateById(id, patch);
     if (!upd) throw new NotFoundException('Lección no encontrada');
     return upd;
   }

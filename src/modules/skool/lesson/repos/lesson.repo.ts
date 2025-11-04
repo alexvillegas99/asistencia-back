@@ -4,7 +4,10 @@ import { FilterQuery, Model, Types } from 'mongoose';
 import { SkoolLesson, SkoolLessonDocument } from '../schemas/lesson.schema';
 const POPULATE = [
   { path: 'videoMediaId', select: 'url kind mimeType width height s3Key' },
-   { path: 'attachments',  select: 'url filename mimeType size s3Key kind originalName' },
+  {
+    path: 'attachments',
+    select: 'url filename mimeType size s3Key kind originalName',
+  },
 ];
 @Injectable()
 export class LessonRepo {
@@ -29,7 +32,6 @@ export class LessonRepo {
     return this.model.findOne(filter).populate(POPULATE).lean();
   }
 
-  
   async findBySection(sectionId: string) {
     console.log('🔍 [LessonRepo] findBySection', sectionId);
     return this.model
@@ -87,19 +89,25 @@ export class LessonRepo {
     await this.model.bulkWrite(ops);
   }
 
-   async addAttachment(lessonId: string, mediaId: string) {
-    return this.model.findByIdAndUpdate(
-      this.asObjectId(lessonId),
-      { $addToSet: { attachments: this.asObjectId(mediaId) } },
-      { new: true }
-    ).populate(POPULATE).lean();
+  async addAttachment(lessonId: string, mediaId: string) {
+    return this.model
+      .findByIdAndUpdate(
+        this.asObjectId(lessonId),
+        { $addToSet: { attachments: this.asObjectId(mediaId) } },
+        { new: true },
+      )
+      .populate(POPULATE)
+      .lean();
   }
 
   async removeAttachment(lessonId: string, mediaId: string) {
-    return this.model.findByIdAndUpdate(
-      this.asObjectId(lessonId),
-      { $pull: { attachments: this.asObjectId(mediaId) } },
-      { new: true }
-    ).populate(POPULATE).lean();
+    return this.model
+      .findByIdAndUpdate(
+        this.asObjectId(lessonId),
+        { $pull: { attachments: this.asObjectId(mediaId) } },
+        { new: true },
+      )
+      .populate(POPULATE)
+      .lean();
   }
 }

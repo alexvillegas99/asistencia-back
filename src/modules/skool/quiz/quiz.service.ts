@@ -74,6 +74,7 @@ export class QuizService {
   }
 
   getByLesson(lessonId: string) {
+    console.log('🔍 [QuizService] getByLesson', lessonId);
     return this.repo.findQuizByLesson(lessonId);
   }
 
@@ -94,8 +95,8 @@ export class QuizService {
       if (actor.userId) filter.userId = new Types.ObjectId(actor.userId);
       if (actor.externalUserId)
         filter.externalUserId = new Types.ObjectId(actor.externalUserId);
-      const attempts = await this.repo.listAttempts(filter);
-      if (attempts.length >= quiz.maxAttempts) {
+      const attempts = await this.repo.listAttempts(filter);  
+      if (attempts.length >= quiz.maxAttempts) { 
         throw new BadRequestException('Límite de intentos alcanzado');
       }
     }
@@ -171,6 +172,37 @@ export class QuizService {
       submittedAt: new Date(),
     });
   }
+
+  // Editar una pregunta existente
+async updateQuestion(questionId: string, dto: Partial<AddQuestionDto>) {
+  const existing = await this.repo.updateQuestion(questionId, {
+    ...(dto.text ? { text: dto.text } : {}),
+    ...(dto.type ? { type: dto.type } : {}),
+    ...(dto.options ? { options: dto.options } : {}),
+    ...(dto.correctIndexes ? { correctIndexes: dto.correctIndexes } : {}),
+    ...(dto.acceptableAnswers
+      ? {
+          acceptableAnswers: dto.acceptableAnswers.map((a) =>
+            norm(stripLatexDelimiters(a)),
+          ),
+        }
+      : {}),
+    ...(dto.points !== undefined ? { points: dto.points } : {}),
+    ...(dto.category !== undefined ? { category: dto.category } : {}),
+    ...(dto.renderMode ? { renderMode: dto.renderMode } : {}),
+  });
+
+  if (!existing) throw new NotFoundException('Pregunta no encontrada');
+  return existing;
+}
+
+// Eliminar una pregunta
+async deleteQuestion(questionId: string) {
+  const deleted = await this.repo.deleteQuestion(questionId);
+  if (!deleted) throw new NotFoundException('Pregunta no encontrada');
+  return { deleted: true };
+}
+
 }
 function looksLikeLatex(s: string) {
   if (!s) return false;

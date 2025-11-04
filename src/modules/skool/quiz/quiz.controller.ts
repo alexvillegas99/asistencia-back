@@ -1,5 +1,5 @@
 // src/modules/skool/quiz/quiz.controller.ts
-import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req } from '@nestjs/common';
 import { QuizService } from './quiz.service';
 import { CreateQuizDto } from './dto/create-quiz.dto';
 import { AddQuestionDto } from './dto/add-question.dto';
@@ -53,4 +53,16 @@ export class QuizController {
   ) {
     return this.service.submit(quizId, attemptId, dto);
   }
+
+  // Editar una pregunta
+@Patch('questions/:id')
+updateQuestion(@Param('id') id: string, @Body() dto: Partial<AddQuestionDto>) {
+  return this.service.updateQuestion(id, dto);
+}
+
+// Eliminar una pregunta
+@Delete('questions/:id')
+deleteQuestion(@Param('id') id: string) {
+  return this.service.deleteQuestion(id);
+}
 }
