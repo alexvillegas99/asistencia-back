@@ -30,7 +30,7 @@ type ReportePorCedula = {
     nombre?: string;
     estado?: string;
     diasActuales?: number; // clases dictadas
-    diasCurso?: number;    // plan
+    diasCurso?: number; // plan
     updatedAt?: string;
     imagen?: string;
   };
@@ -45,8 +45,7 @@ type ReportePorCedula = {
 };
 @Injectable()
 export class AsistenciasService {
-
-    private readonly logger = new Logger(AsistenciasService.name);
+  private readonly logger = new Logger(AsistenciasService.name);
   async todos() {
     try {
       return await this.asistenciaModel.find().exec();
@@ -296,7 +295,7 @@ export class AsistenciasService {
     );
 
     // total de asistencias (activas + inactivas + adicionales)
-    asistente.asistencias = asistente.asistencias+1;
+    asistente.asistencias = asistente.asistencias + 1;
     const totalAsistencias =
       (asistente.asistencias ?? 0) +
       (asistente.asistenciasInactivas ?? 0) +
@@ -358,19 +357,18 @@ export class AsistenciasService {
   async registrarAsistencia(cedula: string, cursoId: string): Promise<string> {
     try {
       // Agregar Días para probar
-const ahora = new Date(); // Fecha y hora actual
+      const ahora = new Date(); // Fecha y hora actual
 
-// ✅ Solo corregimos la fecha local (sin UTC)
-const año = ahora.getFullYear();
-const mes = String(ahora.getMonth() + 1).padStart(2, '0');
-const dia = String(ahora.getDate()).padStart(2, '0');
-const fechaHoy = `${año}-${mes}-${dia}`; // Fecha actual en formato YYYY-MM-DD
+      // ✅ Solo corregimos la fecha local (sin UTC)
+      const año = ahora.getFullYear();
+      const mes = String(ahora.getMonth() + 1).padStart(2, '0');
+      const dia = String(ahora.getDate()).padStart(2, '0');
+      const fechaHoy = `${año}-${mes}-${dia}`; // Fecha actual en formato YYYY-MM-DD
 
-// La hora sí puede quedarse igual
-const horaActual = ahora.toTimeString().split(' ')[0]; // Hora actual en formato HH:mm:ss
+      // La hora sí puede quedarse igual
+      const horaActual = ahora.toTimeString().split(' ')[0]; // Hora actual en formato HH:mm:ss
 
-console.log(`Fecha actual: ${fechaHoy}, Hora actual: ${horaActual}`);
-
+      console.log(`Fecha actual: ${fechaHoy}, Hora actual: ${horaActual}`);
 
       // Verificar cuántos registros existen hoy para el usuario
       const registrosHoy = await this.asistenciaModel
@@ -416,34 +414,33 @@ console.log(`Fecha actual: ${fechaHoy}, Hora actual: ${horaActual}`);
       const hoyEc = new Date(Date.now() - 5 * 60 * 60 * 1000)
         .toISOString()
         .slice(0, 10);
-const result = await this.cursosModel.findOneAndUpdate(
-  {
-    _id: cursoId,
-    $expr: {
-      $or: [
+      const result = await this.cursosModel.findOneAndUpdate(
         {
-          $ne: [
-            {
-              $dateToString: {
-                format: '%Y-%m-%d',
-                date: '$updatedAt',
-                timezone: 'America/Guayaquil',
+          _id: cursoId,
+          $expr: {
+            $or: [
+              {
+                $ne: [
+                  {
+                    $dateToString: {
+                      format: '%Y-%m-%d',
+                      date: '$updatedAt',
+                      timezone: 'America/Guayaquil',
+                    },
+                  },
+                  hoyEc,
+                ],
               },
-            },
-            hoyEc,
-          ],
+              { $eq: ['$diasActuales', 0] },
+            ],
+          },
         },
-        { $eq: ['$diasActuales', 0] },
-      ],
-    },
-  },
-  {
-    $inc: { diasActuales: 1 },
-    $set: { updatedAt: new Date() },
-  },
-  { new: true } // <- devuelve el documento actualizado
-);
-
+        {
+          $inc: { diasActuales: 1 },
+          $set: { updatedAt: new Date() },
+        },
+        { new: true }, // <- devuelve el documento actualizado
+      );
 
       try {
         if (registrosHoy.length === 0) {
@@ -511,8 +508,7 @@ const result = await this.cursosModel.findOneAndUpdate(
     }
   }
 
-
-   // Corre todos los días a las 22:00 hora Ecuador
+  // Corre todos los días a las 22:00 hora Ecuador
   //@Cron('0 22 * * *', { timeZone: 'America/Guayaquil', name: 'validarFaltas22' })
   async validarFaltas() {
     const hoy = new Date();
@@ -530,12 +526,16 @@ const result = await this.cursosModel.findOneAndUpdate(
       });
 
       if (!existeAsistencia) {
-        this.logger.log(`Curso ${curso.nombre} no tuvo ninguna asistencia registrada hoy.`);
+        this.logger.log(
+          `Curso ${curso.nombre} no tuvo ninguna asistencia registrada hoy.`,
+        );
         continue;
       }
 
       // 2. Obtener asistentes del curso
-      const asistentes = await this.asistentesModel.find({ curso: curso._id }).exec();
+      const asistentes = await this.asistentesModel
+        .find({ curso: curso._id })
+        .exec();
 
       for (const asistente of asistentes) {
         // 3. Verificar si el asistente tiene asistencia hoy
@@ -547,237 +547,272 @@ const result = await this.cursosModel.findOneAndUpdate(
 
         if (!yaAsistio) {
           this.logger.warn(
-            `Asistente ${asistente.cedula} (${asistente._id}) del curso ${curso.nombre} no registró asistencia hoy. Se incrementa inasistencias.`
+            `Asistente ${asistente.cedula} (${asistente._id}) del curso ${curso.nombre} no registró asistencia hoy. Se incrementa inasistencias.`,
           );
 
           // Incrementar inasistencias
-          await this.asistentesModel.updateOne(
-            { _id: asistente._id },
-            { $inc: { inasistencias: 1 } }
-          ).exec();
+          await this.asistentesModel
+            .updateOne({ _id: asistente._id }, { $inc: { inasistencias: 1 } })
+            .exec();
         }
       }
     }
   }
-async reportePorCedulaTotal(cedula: string) {
-  // 1) Asistente
-  const asistente = await this.asistentesModel.findOne({ cedula }).lean().exec();
-  if (!asistente) {
-    throw new NotFoundException(`No existe asistente con cédula ${cedula}`);
-  }
-
-  // 2) Curso (acepta ObjectId o nombre string)
-  let cursoDoc: any = null;
-  const cursoField = asistente.curso;
-
-  if (cursoField && Types.ObjectId.isValid(String(cursoField))) {
-    cursoDoc = await this.cursosModel.findById(cursoField).lean().exec();
-  } else if (typeof cursoField === 'string') {
-    cursoDoc = await this.cursosModel.findOne({ nombre: cursoField }).lean().exec();
-  }
-
-  const curso: any = cursoDoc
-    ? {
-        id: String(cursoDoc._id),
-        nombre: cursoDoc.nombre ?? null,
-        estado: cursoDoc.estado ?? null,
-        diasActuales: typeof cursoDoc.diasActuales === 'number' ? cursoDoc.diasActuales : null,
-        diasCurso: typeof cursoDoc.diasCurso === 'number' ? cursoDoc.diasCurso : null,
-        updatedAt: cursoDoc.updatedAt ?? null,
-        imagen: cursoDoc.imagen ?? null,
-        fechasEsperadas: Array.isArray(cursoDoc.fechasEsperadas) ? cursoDoc.fechasEsperadas : [],
-      }
-    : {
-        id: cursoField && Types.ObjectId.isValid(String(cursoField)) ? String(cursoField) : null,
-        nombre: typeof cursoField === 'string' ? cursoField : null,
-        estado: null,
-        diasActuales: null,
-        diasCurso: null,
-        updatedAt: null,
-        imagen: null,
-        fechasEsperadas: [],
-      };
-
-  // 3) Obtener todas las cédulas del mismo curso
-  const cursoMatchOr = [];
-  if (cursoDoc) {
-    cursoMatchOr.push({ curso: cursoDoc._id });
-    cursoMatchOr.push({ curso: cursoDoc.nombre });
-  } else if (cursoField) {
-    cursoMatchOr.push({ curso: cursoField });
-  }
-
-  let cedulasCurso: string[] = [];
-  if (cursoMatchOr.length > 0) {
-    const asistentesCurso = await this.asistentesModel
-      .find({ $or: cursoMatchOr }, { cedula: 1 })
+  async reportePorCedulaTotal(cedula: string) {
+    // 1) Asistente
+    const asistente = await this.asistentesModel
+      .findOne({ cedula })
       .lean()
       .exec();
-    cedulasCurso = (asistentesCurso ?? [])
-      .map((a: any) => a.cedula)
-      .filter((x: any) => typeof x === 'string');
-  }
+    if (!asistente) {
+      throw new NotFoundException(`No existe asistente con cédula ${cedula}`);
+    }
 
-  // 4) Agregación: registros/resumen del asistente y "top" del curso
-  const [aggr] = await this.asistenciaModel.aggregate([
-    {
-      $facet: {
-        registros: [
-          { $match: { cedula } },
-          { $sort: { fecha: -1, createdAt: 1 } },
-          {
-            $group: {
-              _id: '$fecha',
-              horas: { $push: '$hora' },
-              registrosEnElDia: { $sum: 1 },
-            },
-          },
-          { $sort: { _id: -1 } },
-          {
-            $project: {
-              _id: 0,
-              fecha: '$_id',
-              horas: 1,
-              registrosEnElDia: 1,
-            },
-          },
-        ],
-        resumen: [
-          { $match: { cedula } },
-          {
-            $group: {
-              _id: null,
-              totalRegistros: { $sum: 1 },
-              ultimaFecha: { $max: '$fecha' },
-              diasConAsistenciaSet: { $addToSet: '$fecha' },
-            },
-          },
-          {
-            $project: {
-              _id: 0,
-              totalRegistros: 1,
-              ultimaFecha: 1,
-              diasConAsistencia: { $size: '$diasConAsistenciaSet' },
-            },
-          },
-        ],
-        topCurso: cedulasCurso.length
-          ? [
-              { $match: { cedula: { $in: cedulasCurso } } },
+    // 2) Curso (acepta ObjectId o nombre string)
+    let cursoDoc: any = null;
+    const cursoField = asistente.curso;
+
+    if (cursoField && Types.ObjectId.isValid(String(cursoField))) {
+      cursoDoc = await this.cursosModel.findById(cursoField).lean().exec();
+    } else if (typeof cursoField === 'string') {
+      cursoDoc = await this.cursosModel
+        .findOne({ nombre: cursoField })
+        .lean()
+        .exec();
+    }
+
+    const curso: any = cursoDoc
+      ? {
+          id: String(cursoDoc._id),
+          nombre: cursoDoc.nombre ?? null,
+          estado: cursoDoc.estado ?? null,
+          diasActuales:
+            typeof cursoDoc.diasActuales === 'number'
+              ? cursoDoc.diasActuales
+              : null,
+          diasCurso:
+            typeof cursoDoc.diasCurso === 'number' ? cursoDoc.diasCurso : null,
+          updatedAt: cursoDoc.updatedAt ?? null,
+          imagen: cursoDoc.imagen ?? null,
+          fechasEsperadas: Array.isArray(cursoDoc.fechasEsperadas)
+            ? cursoDoc.fechasEsperadas
+            : [],
+        }
+      : {
+          id:
+            cursoField && Types.ObjectId.isValid(String(cursoField))
+              ? String(cursoField)
+              : null,
+          nombre: typeof cursoField === 'string' ? cursoField : null,
+          estado: null,
+          diasActuales: null,
+          diasCurso: null,
+          updatedAt: null,
+          imagen: null,
+          fechasEsperadas: [],
+        };
+
+    // 3) Obtener todas las cédulas del mismo curso
+    const cursoMatchOr = [];
+    if (cursoDoc) {
+      cursoMatchOr.push({ curso: cursoDoc._id });
+      cursoMatchOr.push({ curso: cursoDoc.nombre });
+    } else if (cursoField) {
+      cursoMatchOr.push({ curso: cursoField });
+    }
+
+    let cedulasCurso: string[] = [];
+    if (cursoMatchOr.length > 0) {
+      const asistentesCurso = await this.asistentesModel
+        .find({ $or: cursoMatchOr }, { cedula: 1 })
+        .lean()
+        .exec();
+      cedulasCurso = (asistentesCurso ?? [])
+        .map((a: any) => a.cedula)
+        .filter((x: any) => typeof x === 'string');
+    }
+
+    // 4) Agregación: registros/resumen del asistente y "top" del curso
+    const [aggr] = await this.asistenciaModel
+      .aggregate([
+        {
+          $facet: {
+            registros: [
+              { $match: { cedula } },
+              { $sort: { fecha: -1, createdAt: 1 } },
               {
                 $group: {
-                  _id: '$cedula',
-                  diasSet: { $addToSet: '$fecha' }, // fechas únicas por estudiante
-                  total: { $sum: 1 },
+                  _id: '$fecha',
+                  horas: { $push: '$hora' },
+                  registrosEnElDia: { $sum: 1 },
                 },
               },
-              { $sort: { total: -1 } },
-              { $limit: 1 },
+              { $sort: { _id: -1 } },
               {
                 $project: {
                   _id: 0,
-                  referenciaCedula: '$_id',
-                  total: '$total',      // <-- corregido
-                  diasTop: '$diasSet',
+                  fecha: '$_id',
+                  horas: 1,
+                  registrosEnElDia: 1,
                 },
               },
-            ]
-          : [{ $limit: 0 }],
-      },
-    },
-    {
-      $project: {
-        registros: 1,
-        resumen: {
-          $ifNull: [
-            { $arrayElemAt: ['$resumen', 0] },
-            { totalRegistros: 0, ultimaFecha: null, diasConAsistencia: 0 },
-          ],
+            ],
+            resumen: [
+              { $match: { cedula } },
+              {
+                $group: {
+                  _id: null,
+                  totalRegistros: { $sum: 1 },
+                  ultimaFecha: { $max: '$fecha' },
+                  diasConAsistenciaSet: { $addToSet: '$fecha' },
+                },
+              },
+              {
+                $project: {
+                  _id: 0,
+                  totalRegistros: 1,
+                  ultimaFecha: 1,
+                  diasConAsistencia: { $size: '$diasConAsistenciaSet' },
+                },
+              },
+            ],
+            topCurso: cedulasCurso.length
+              ? [
+                  { $match: { cedula: { $in: cedulasCurso } } },
+                  {
+                    $group: {
+                      _id: '$cedula',
+                      diasSet: { $addToSet: '$fecha' }, // fechas únicas por estudiante
+                      total: { $sum: 1 },
+                    },
+                  },
+                  { $sort: { total: -1 } },
+                  { $limit: 1 },
+                  {
+                    $project: {
+                      _id: 0,
+                      referenciaCedula: '$_id',
+                      total: '$total', // <-- corregido
+                      diasTop: '$diasSet',
+                    },
+                  },
+                ]
+              : [{ $limit: 0 }],
+          },
         },
-        topCurso: { $ifNull: ['$topCurso', []] },
+        {
+          $project: {
+            registros: 1,
+            resumen: {
+              $ifNull: [
+                { $arrayElemAt: ['$resumen', 0] },
+                { totalRegistros: 0, ultimaFecha: null, diasConAsistencia: 0 },
+              ],
+            },
+            topCurso: { $ifNull: ['$topCurso', []] },
+          },
+        },
+      ])
+      .exec();
+
+    // 5) Porcentaje de asistencia
+    const asistenciasActivas = Number(asistente.asistencias ?? 0);
+    const asistenciasInactivas = Number(asistente.asistenciasInactivas ?? 0);
+    const asistenciasAdicionales = Number(
+      asistente.asistenciasAdicionales ?? 0,
+    );
+    const totalAsistenciasAcumuladas =
+      asistenciasActivas + asistenciasInactivas + asistenciasAdicionales;
+
+    const diasActuales =
+      typeof curso.diasActuales === 'number' ? curso.diasActuales! : 0;
+    const porcentajeAsistencia =
+      diasActuales > 0
+        ? Math.min(
+            100,
+            Math.round((totalAsistenciasAcumuladas / diasActuales) * 100),
+          )
+        : 0;
+
+    // ===== 6) Fechas de referencia ajustadas a L-V y recorte a diasActuales =====
+    const diasAsistidosSet = new Set<string>(
+      (aggr?.registros ?? []).map((r: any) => String(r.fecha)),
+    );
+
+    const topInfo =
+      Array.isArray(aggr?.topCurso) && aggr.topCurso.length
+        ? aggr.topCurso[0]
+        : null;
+    const fechasReferenciaBrutas: string[] =
+      topInfo?.diasTop?.map((d: any) => String(d)) ?? [];
+
+    // Helper: es día laboral L-V (ISO 1..5) usando TZ Ecuador
+    const esLaboral = (ymd: string) => {
+      // evitar parseos raros: YYYY-MM-DD + TZ fija
+      const dt = new Date(`${ymd}T00:00:00-05:00`);
+      // getUTCDay(): 0..6 (Dom..Sáb); mapeo a ISO: 1..7
+      const iso = ((dt.getUTCDay() + 6) % 7) + 1;
+      return iso >= 1 && iso <= 5;
+    };
+
+    // Última fecha “válida” para no incluir futuros (usa la del resumen del alumno o hoy)
+    const ultimaFechaAlumno = aggr?.resumen?.ultimaFecha
+      ? String(aggr.resumen.ultimaFecha)
+      : null;
+    const hoyStr = new Date().toISOString().slice(0, 10);
+    const topeFecha = ultimaFechaAlumno ?? hoyStr;
+
+    // 1) filtra L-V, 2) no después de topeFecha, 3) ordena asc, 4) recorta a diasActuales
+    let fechasReferencia = fechasReferenciaBrutas
+      .filter((f) => esLaboral(f))
+      .filter((f) => f <= topeFecha)
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+
+    if (diasActuales > 0 && fechasReferencia.length > diasActuales) {
+      fechasReferencia = fechasReferencia.slice(0, diasActuales);
+    }
+
+    // Fallback si no hay top: usa los días asistidos propios (ya serán ≤ diasActuales)
+    const fechasEsperadas =
+      fechasReferencia.length > 0
+        ? fechasReferencia
+        : Array.from(diasAsistidosSet).sort();
+
+    // ===== 7) Faltas calculadas contra fechasEsperadas =====
+    const diasFaltados = fechasEsperadas.filter(
+      (d) => !diasAsistidosSet.has(d),
+    );
+    const totalDiasEsperados = fechasEsperadas.length;
+    const totalFaltas = diasFaltados.length;
+
+    // 8) Respuesta
+    return {
+      cedula,
+      asistente: {
+        id: String(asistente._id),
+        nombre: asistente.nombre ?? null,
       },
-    },
-  ]).exec();
-
-  // 5) Porcentaje de asistencia
-  const asistenciasActivas = Number(asistente.asistencias ?? 0);
-  const asistenciasInactivas = Number(asistente.asistenciasInactivas ?? 0);
-  const asistenciasAdicionales = Number(asistente.asistenciasAdicionales ?? 0);
-  const totalAsistenciasAcumuladas = asistenciasActivas + asistenciasInactivas + asistenciasAdicionales;
-
-  const diasActuales = typeof curso.diasActuales === 'number' ? curso.diasActuales! : 0;
-  const porcentajeAsistencia =
-    diasActuales > 0
-      ? Math.min(100, Math.round((totalAsistenciasAcumuladas / diasActuales) * 100))
-      : 0;
-
-  // ===== 6) Fechas de referencia ajustadas a L-V y recorte a diasActuales =====
-  const diasAsistidosSet = new Set<string>((aggr?.registros ?? []).map((r: any) => String(r.fecha)));
-
-  const topInfo = Array.isArray(aggr?.topCurso) && aggr.topCurso.length ? aggr.topCurso[0] : null;
-  const fechasReferenciaBrutas: string[] = topInfo?.diasTop?.map((d: any) => String(d)) ?? [];
-
-  // Helper: es día laboral L-V (ISO 1..5) usando TZ Ecuador
-  const esLaboral = (ymd: string) => {
-    // evitar parseos raros: YYYY-MM-DD + TZ fija
-    const dt = new Date(`${ymd}T00:00:00-05:00`);
-    // getUTCDay(): 0..6 (Dom..Sáb); mapeo a ISO: 1..7
-    const iso = ((dt.getUTCDay() + 6) % 7) + 1;
-    return iso >= 1 && iso <= 5;
-  };
-
-  // Última fecha “válida” para no incluir futuros (usa la del resumen del alumno o hoy)
-  const ultimaFechaAlumno = aggr?.resumen?.ultimaFecha ? String(aggr.resumen.ultimaFecha) : null;
-  const hoyStr = new Date().toISOString().slice(0, 10);
-  const topeFecha = ultimaFechaAlumno ?? hoyStr;
-
-  // 1) filtra L-V, 2) no después de topeFecha, 3) ordena asc, 4) recorta a diasActuales
-  let fechasReferencia = fechasReferenciaBrutas
-    .filter((f) => esLaboral(f))
-    .filter((f) => f <= topeFecha)
-    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-
-  if (diasActuales > 0 && fechasReferencia.length > diasActuales) {
-    fechasReferencia = fechasReferencia.slice(0, diasActuales);
+      curso,
+      resumen: {
+        ...(aggr?.resumen ?? {
+          totalRegistros: 0,
+          ultimaFecha: null,
+          diasConAsistencia: 0,
+        }),
+        porcentajeAsistencia,
+        totalAsistenciasAcumuladas,
+        totalDiasEsperados, // ⬅️ ahora debe coincidir con curso.diasActuales (28) si hay suficientes fechas L-V
+        totalFaltas,
+      },
+      faltas: {
+        referencia: topInfo?.referenciaCedula ?? null,
+        diasFaltados,
+      },
+      registros: aggr?.registros ?? [],
+    };
   }
 
-  // Fallback si no hay top: usa los días asistidos propios (ya serán ≤ diasActuales)
-  const fechasEsperadas =
-    fechasReferencia.length > 0 ? fechasReferencia : Array.from(diasAsistidosSet).sort();
-
-  // ===== 7) Faltas calculadas contra fechasEsperadas =====
-  const diasFaltados = fechasEsperadas.filter((d) => !diasAsistidosSet.has(d));
-  const totalDiasEsperados = fechasEsperadas.length;
-  const totalFaltas = diasFaltados.length;
-
-  // 8) Respuesta
-  return {
-    cedula,
-    asistente: {
-      id: String(asistente._id),
-      nombre: asistente.nombre ?? null,
-    },
-    curso,
-    resumen: {
-      ...(aggr?.resumen ?? { totalRegistros: 0, ultimaFecha: null, diasConAsistencia: 0 }),
-      porcentajeAsistencia,
-      totalAsistenciasAcumuladas,
-      totalDiasEsperados,   // ⬅️ ahora debe coincidir con curso.diasActuales (28) si hay suficientes fechas L-V
-      totalFaltas,
-    },
-    faltas: {
-      referencia: topInfo?.referenciaCedula ?? null,
-      diasFaltados,
-    },
-    registros: aggr?.registros ?? [],
-  };
-}
-
-
-
-
-
-/* 
+  /* 
 async pdfPorCedula(cedula: string): Promise<Buffer> {
   const data:any = await this.reportePorCedulaTotal(cedula);
 
@@ -811,7 +846,6 @@ async pdfPorCedula(cedula: string): Promise<Buffer> {
   });
 } */
 
-
   private async fetchImageBuffer(url: string): Promise<Buffer | null> {
     try {
       const { data } = await axios.get(url, { responseType: 'arraybuffer' });
@@ -821,81 +855,87 @@ async pdfPorCedula(cedula: string): Promise<Buffer> {
     }
   }
 
-private drawBackground(doc: PDFKit.PDFDocument, bg?: Buffer | null) {
-  if (!bg) return;
-  doc.save();
-  
-  doc.image(bg, 0, 0, {
-    fit: [doc.page.width, doc.page.height],
-    align: 'center',
-    valign: 'center',
-  });
-  doc.restore();
-}
+  private drawBackground(doc: PDFKit.PDFDocument, bg?: Buffer | null) {
+    if (!bg) return;
+    doc.save();
 
-private drawHeaderBlock(doc: PDFKit.PDFDocument, data: ReportePorCedula) {
-  const nombreCurso = (data.curso.nombre || '').replaceAll('_', ' ').trim();
-  const clases = data.curso.diasActuales ?? 0;
-  const asistidos = data.resumen.diasConAsistencia ?? 0;
-  const porcentaje = data.resumen.porcentajeAsistencia ?? 0;
+    doc.image(bg, 0, 0, {
+      fit: [doc.page.width, doc.page.height],
+      align: 'center',
+      valign: 'center',
+    });
+    doc.restore();
+  }
 
-  // Dimensiones del bloque
-  const x = 40;
-  const w = doc.page.width - 80;
-  const h = 110;
-  const y = doc.y;
+  private drawHeaderBlock(doc: PDFKit.PDFDocument, data: ReportePorCedula) {
+    const nombreCurso = (data.curso.nombre || '').replaceAll('_', ' ').trim();
+    const clases = data.curso.diasActuales ?? 0;
+    const asistidos = data.resumen.diasConAsistencia ?? 0;
+    const porcentaje = data.resumen.porcentajeAsistencia ?? 0;
 
-  // Capa blanca muy sutil bajo la tarjeta para “matar” el fondo
-  doc.save();
-  doc.roundedRect(x - 6, y - 6, w + 12, h + 12, 10)
-     .fillOpacity(0.6).fill('#ffffff').fillOpacity(1);
-  doc.restore();
+    // Dimensiones del bloque
+    const x = 40;
+    const w = doc.page.width - 80;
+    const h = 110;
+    const y = doc.y;
 
-  // Tarjeta
-  doc.save();
-  doc.roundedRect(x, y, w, h, 12)
-     .fill('#1a1d29') // base casi negra
-     .strokeColor('#2b2f41').lineWidth(1).stroke();
-  doc.restore();
+    // Capa blanca muy sutil bajo la tarjeta para “matar” el fondo
+    doc.save();
+    doc
+      .roundedRect(x - 6, y - 6, w + 12, h + 12, 10)
+      .fillOpacity(0.6)
+      .fill('#ffffff')
+      .fillOpacity(1);
+    doc.restore();
 
-  const pad = 16;
-  const left = x + pad;
-  const right = x + w / 2 + 8; // “columna” derecha
+    // Tarjeta
+    doc.save();
+    doc
+      .roundedRect(x, y, w, h, 12)
+      .fill('#1a1d29') // base casi negra
+      .strokeColor('#2b2f41')
+      .lineWidth(1)
+      .stroke();
+    doc.restore();
 
-  // Título
-  doc.font('Helvetica-Bold').fontSize(16).fillColor('#e9ecf4');
-  doc.text('Reporte de Asistencia', left, y + pad, { width: w - pad * 2 });
+    const pad = 16;
+    const left = x + pad;
+    const right = x + w / 2 + 8; // “columna” derecha
 
-  // Curso (2 líneas máx) + datos
-  const topText = y + pad + 20;
+    // Título
+    doc.font('Helvetica-Bold').fontSize(16).fillColor('#e9ecf4');
+    doc.text('Reporte de Asistencia', left, y + pad, { width: w - pad * 2 });
 
-  doc.font('Helvetica').fontSize(11).fillColor('#b8becc');
-  // Curso (hasta 2 líneas, luego '…')
-  doc.text(nombreCurso || '—', left, topText, {
-    width: (w / 2) - pad,
-    height: 32,
-    ellipsis: true,
-  });
+    // Curso (2 líneas máx) + datos
+    const topText = y + pad + 20;
 
-  // Cédula y Asistente debajo
-  doc.moveDown(0.2);
-  doc.text(`Cédula: ${data.cedula}`, left, doc.y);
-  doc.text(`Asistente: ${data.asistente?.nombre ?? '—'}`, left, doc.y);
-  doc.text(`Estado: ${data.curso.estado ?? '—'}`, left, doc.y);
+    doc.font('Helvetica').fontSize(11).fillColor('#b8becc');
+    // Curso (hasta 2 líneas, luego '…')
+    doc.text(nombreCurso || '—', left, topText, {
+      width: w / 2 - pad,
+      height: 32,
+      ellipsis: true,
+    });
 
-  // Columna derecha: Asistidos/Clases y Porcentaje
-  doc.font('Helvetica').fontSize(11).fillColor('#cdd2de');
-  const rTop = topText;
-  doc.text(`Asistidos: ${asistidos}`, right, rTop, { width: w/2 - pad });
-  doc.text(`Clases: ${clases}`, right, doc.y);
-  doc.moveDown(0.3);
+    // Cédula y Asistente debajo
+    doc.moveDown(0.2);
+    doc.text(`Cédula: ${data.cedula}`, left, doc.y);
+    doc.text(`Asistente: ${data.asistente?.nombre ?? '—'}`, left, doc.y);
+    doc.text(`Estado: ${data.curso.estado ?? '—'}`, left, doc.y);
 
-/*   doc.font('Helvetica-Bold').fontSize(20).fillColor('#e9ecf4');
+    // Columna derecha: Asistidos/Clases y Porcentaje
+    doc.font('Helvetica').fontSize(11).fillColor('#cdd2de');
+    const rTop = topText;
+    doc.text(`Asistidos: ${asistidos}`, right, rTop, { width: w / 2 - pad });
+    doc.text(`Clases: ${clases}`, right, doc.y);
+    doc.moveDown(0.3);
+
+    /*   doc.font('Helvetica-Bold').fontSize(20).fillColor('#e9ecf4');
   doc.text(`${porcentaje}%`, right, doc.y + 2); */
 
-  // Barra de progreso
- // Barra de progreso (opcional)
-/* const ratio = clases > 0 ? Math.max(0, Math.min(1, asistidos / clases)) : 0;
+    // Barra de progreso
+    // Barra de progreso (opcional)
+    /* const ratio = clases > 0 ? Math.max(0, Math.min(1, asistidos / clases)) : 0;
 const barX = left;
 const barY = y + h - pad - 12; // un poquito más arriba para evitar solape
 const barW = w - pad * 2;
@@ -903,108 +943,138 @@ const barH = 8;
 
 doc.save();
 doc.roundedRect(barX, barY, barW, barH, 6).fill('#2a2e3f'); */
-/* if (ratio > 0) {
+    /* if (ratio > 0) {
   // tramo coloreado
   const fillW = Math.max(10, barW * ratio); // mínimo 10px para que se vea
   doc.roundedRect(barX, barY, Math.min(fillW, barW), barH, 6).fill('#7C3AED');
 } */
-doc.restore();
+    doc.restore();
 
-// Porcentaje justo encima, centrado a la derecha
-/* doc.font('Helvetica-Bold').fontSize(14).fillColor('#e9ecf4');
+    // Porcentaje justo encima, centrado a la derecha
+    /* doc.font('Helvetica-Bold').fontSize(14).fillColor('#e9ecf4');
 doc.text(`${porcentaje}%`, barX + barW - 60, barY - 16, { width: 60, align: 'right' });
  */
-}
-private drawFooter(doc: PDFKit.PDFDocument, page: number, total: number) {
-  doc.font('Helvetica').fontSize(9).fillColor('#9aa0ae');
-  const ts = new Date().toLocaleString('es-EC');
-  doc.text(`Generado: ${ts}`, 40, doc.page.height - 40, { align: 'left', width: doc.page.width / 2 - 40 });
-  doc.text(`Página ${page} / ${total}`, doc.page.width / 2, doc.page.height - 40, {
-    align: 'right',
-    width: doc.page.width / 2 - 40,
-  });
-}
- private drawTable(
-  doc: PDFKit.PDFDocument,
-  rows: RegistroDia[],
-  opts: { y: number; marginX?: number } = { y: 0 },
-) {
-  const marginX = opts.marginX ?? 40;
-  let y = opts.y;
-
-  const w = doc.page.width - marginX * 2;
-  const colFecha = 120;
-  const colHoras = w - colFecha;
-
-  // Header
-  doc.save();
-  doc.roundedRect(marginX, y, w, 22, 8).fill('#1f2333');
-  doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(10.5);
-  doc.text('Fecha', marginX + 12, y + 5, { width: colFecha - 24, align: 'left' });
-  doc.text('Horas', marginX + colFecha + 12, y + 5, { width: colHoras - 24, align: 'left' });
-  doc.restore();
-  y += 24;
-
-  // Filas
-doc.font('Helvetica').fontSize(10);
-const rowH = 20;
-
-const drawHeaderAgain = () => {
-  doc.save();
-  doc.roundedRect(marginX, y, w, 22, 8).fill('#1f2333');
-  doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(10.5);
-  doc.text('Fecha', marginX + 12, y + 5, { width: colFecha - 24 });
-  doc.text('Horas', marginX + colFecha + 12, y + 5, { width: colHoras - 24 });
-  doc.restore();
-  y += 24;
-};
-
-for (let i = 0; i < rows.length; i++) {
-  if (y + rowH > doc.page.height - 60) {
-    doc.addPage();
-    y = 40;
-    drawHeaderAgain();
   }
+  private drawFooter(doc: PDFKit.PDFDocument, page: number, total: number) {
+    doc.font('Helvetica').fontSize(9).fillColor('#9aa0ae');
+    const ts = new Date().toLocaleString('es-EC');
+    doc.text(`Generado: ${ts}`, 40, doc.page.height - 40, {
+      align: 'left',
+      width: doc.page.width / 2 - 40,
+    });
+    doc.text(
+      `Página ${page} / ${total}`,
+      doc.page.width / 2,
+      doc.page.height - 40,
+      {
+        align: 'right',
+        width: doc.page.width / 2 - 40,
+      },
+    );
+  }
+  private drawTable(
+    doc: PDFKit.PDFDocument,
+    rows: RegistroDia[],
+    opts: { y: number; marginX?: number } = { y: 0 },
+  ) {
+    const marginX = opts.marginX ?? 40;
+    let y = opts.y;
 
-  const isZebra = i % 2 === 0;       // true = fondo oscuro (zebra)
-  const dateColor = isZebra ? '#cfd3df' : '#7C3AED';
-  const hoursColor = isZebra ? '#cfd3df' : '#7C3AED'; // 👈 morado cuando NO hay fondo
+    const w = doc.page.width - marginX * 2;
+    const colFecha = 120;
+    const colHoras = w - colFecha;
 
-  // Zebra sutil (solo en impares según tu preferencia)
-  if (isZebra) {
+    // Header
     doc.save();
-    doc.rect(marginX, y, w, rowH).fill('#151826');
+    doc.roundedRect(marginX, y, w, 22, 8).fill('#1f2333');
+    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(10.5);
+    doc.text('Fecha', marginX + 12, y + 5, {
+      width: colFecha - 24,
+      align: 'left',
+    });
+    doc.text('Horas', marginX + colFecha + 12, y + 5, {
+      width: colHoras - 24,
+      align: 'left',
+    });
     doc.restore();
+    y += 24;
+
+    // Filas
+    doc.font('Helvetica').fontSize(10);
+    const rowH = 20;
+
+    const drawHeaderAgain = () => {
+      doc.save();
+      doc.roundedRect(marginX, y, w, 22, 8).fill('#1f2333');
+      doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(10.5);
+      doc.text('Fecha', marginX + 12, y + 5, { width: colFecha - 24 });
+      doc.text('Horas', marginX + colFecha + 12, y + 5, {
+        width: colHoras - 24,
+      });
+      doc.restore();
+      y += 24;
+    };
+
+    for (let i = 0; i < rows.length; i++) {
+      if (y + rowH > doc.page.height - 60) {
+        doc.addPage();
+        y = 40;
+        drawHeaderAgain();
+      }
+
+      const isZebra = i % 2 === 0; // true = fondo oscuro (zebra)
+      const dateColor = isZebra ? '#cfd3df' : '#7C3AED';
+      const hoursColor = isZebra ? '#cfd3df' : '#7C3AED'; // 👈 morado cuando NO hay fondo
+
+      // Zebra sutil (solo en impares según tu preferencia)
+      if (isZebra) {
+        doc.save();
+        doc.rect(marginX, y, w, rowH).fill('#151826');
+        doc.restore();
+      }
+
+      // Borde inferior sutil
+      doc.save();
+      doc
+        .lineWidth(0.5)
+        .strokeColor('#25293a')
+        .moveTo(marginX, y + rowH)
+        .lineTo(marginX + w, y + rowH)
+        .stroke();
+      doc.restore();
+
+      // Fecha
+      doc.fillColor(dateColor);
+      doc.text(rows[i].fecha ?? '—', marginX + 12, y + 4, {
+        width: colFecha - 24,
+      });
+
+      // Horas
+      const horasTxt =
+        Array.isArray(rows[i].horas) && rows[i].horas.length
+          ? rows[i].horas.join('  •  ')
+          : '—';
+      doc.fillColor(hoursColor);
+      doc.text(horasTxt, marginX + colFecha + 12, y + 4, {
+        width: colHoras - 24,
+      });
+
+      y += rowH;
+    }
   }
 
-  // Borde inferior sutil
-  doc.save();
-  doc.lineWidth(0.5).strokeColor('#25293a')
-     .moveTo(marginX, y + rowH).lineTo(marginX + w, y + rowH).stroke();
-  doc.restore();
-
-  // Fecha
-  doc.fillColor(dateColor);
-  doc.text(rows[i].fecha ?? '—', marginX + 12, y + 4, { width: colFecha - 24 });
-
-  // Horas
-  const horasTxt = Array.isArray(rows[i].horas) && rows[i].horas.length
-    ? rows[i].horas.join('  •  ')
-    : '—';
-  doc.fillColor(hoursColor);
-  doc.text(horasTxt, marginX + colFecha + 12, y + 4, { width: colHoras - 24 });
-
-  y += rowH;
-}
-}
-
- async pdfPorCedula(cedula: string): Promise<{ buffer: Buffer; filename: string }> {
-    const BACKGROUND_URL = 'https://corpfourier.s3.us-east-2.amazonaws.com/marca_agua/marca-reportes.png';
+  async pdfPorCedula(
+    cedula: string,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const BACKGROUND_URL =
+      'https://corpfourier.s3.us-east-2.amazonaws.com/marca_agua/marca-reportes.png';
     const data: any = await this.reportePorCedulaTotal(cedula);
     if (!data) throw new NotFoundException('Sin datos');
 
     const filename = `asistencia_${cedula}.pdf`;
-    const bg = BACKGROUND_URL ? await this.fetchImageBuffer(BACKGROUND_URL) : null;
+    const bg = BACKGROUND_URL
+      ? await this.fetchImageBuffer(BACKGROUND_URL)
+      : null;
 
     const doc = new PDFDocument({ size: 'A4', margin: 40 });
     const chunks: Buffer[] = [];
@@ -1028,7 +1098,11 @@ for (let i = 0; i < rows.length; i++) {
       doc.y = doc.page.margins.top + HEADER_HEIGHT + PADDING_BELOW_HEADER;
 
       // ===== TÍTULO TABLA =====
-      doc.font('Helvetica-Bold').fontSize(12).fillColor('#0f172a').text('Registros por fecha');
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(12)
+        .fillColor('#0f172a')
+        .text('Registros por fecha');
       doc.moveDown(0.2);
 
       // ===== TABLA COMBINADA =====
@@ -1039,7 +1113,9 @@ for (let i = 0; i < rows.length; i++) {
       // ===== FOOTER =====
       doc.moveDown(1);
       doc.font('Helvetica').fontSize(9).fillColor('#9aa0ae');
-      doc.text(`Generado: ${this.formatDateTime(new Date().toISOString())}`, { align: 'right' });
+      doc.text(`Generado: ${this.formatDateTime(new Date().toISOString())}`, {
+        align: 'right',
+      });
 
       doc.end();
     });
@@ -1049,54 +1125,54 @@ for (let i = 0; i < rows.length; i++) {
 
   /* ======================== HELPERS ======================== */
 
-// === 1) Parser robusto: trata 'YYYY-MM-DD' como fecha local (sin TZ) ===
-private parseISOAsLocal(iso: string): Date {
-  if (!iso) return new Date(NaN);
-  // Si viene con hora (contiene 'T'), deja que el Date nativo la resuelva
-  if (iso.includes('T')) return new Date(iso);
+  // === 1) Parser robusto: trata 'YYYY-MM-DD' como fecha local (sin TZ) ===
+  private parseISOAsLocal(iso: string): Date {
+    if (!iso) return new Date(NaN);
+    // Si viene con hora (contiene 'T'), deja que el Date nativo la resuelva
+    if (iso.includes('T')) return new Date(iso);
 
-  // Esperado: 'YYYY-MM-DD'
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  if (m) {
-    const y = Number(m[1]);
-    const mo = Number(m[2]) - 1; // 0-based
-    const d = Number(m[3]);
-    return new Date(y, mo, d, 0, 0, 0, 0); // local time
+    // Esperado: 'YYYY-MM-DD'
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+    if (m) {
+      const y = Number(m[1]);
+      const mo = Number(m[2]) - 1; // 0-based
+      const d = Number(m[3]);
+      return new Date(y, mo, d, 0, 0, 0, 0); // local time
+    }
+    // Si viene en otro formato, intenta parseo nativo
+    return new Date(iso);
   }
-  // Si viene en otro formato, intenta parseo nativo
-  return new Date(iso);
-}
 
-// === 2) Solo "día de mes de año" (sin weekday) ===
-private formatDate(iso: string): string {
-  const d = this.parseISOAsLocal(iso);
-  if (isNaN(d.getTime())) return '—';
-  // Usamos formatToParts para asegurar el orden "d de mmmm de yyyy"
-  const parts = new Intl.DateTimeFormat('es-EC', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  }).formatToParts(d);
+  // === 2) Solo "día de mes de año" (sin weekday) ===
+  private formatDate(iso: string): string {
+    const d = this.parseISOAsLocal(iso);
+    if (isNaN(d.getTime())) return '—';
+    // Usamos formatToParts para asegurar el orden "d de mmmm de yyyy"
+    const parts = new Intl.DateTimeFormat('es-EC', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }).formatToParts(d);
 
-  const map = Object.fromEntries(parts.map(p => [p.type, p.value]));
-  // Asegura "15 de julio de 2025"
-  return `${map.day} de ${map.month} de ${map.year}`;
-}
+    const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+    // Asegura "15 de julio de 2025"
+    return `${map.day} de ${map.month} de ${map.year}`;
+  }
 
-// === 3) "día de mes de año, HH:mm" (sin weekday) para el footer ===
-private formatDateTime(iso: string): string {
-  const d = this.parseISOAsLocal(iso);
-  if (isNaN(d.getTime())) return '—';
+  // === 3) "día de mes de año, HH:mm" (sin weekday) para el footer ===
+  private formatDateTime(iso: string): string {
+    const d = this.parseISOAsLocal(iso);
+    if (isNaN(d.getTime())) return '—';
 
-  const fecha = this.formatDate(iso); // reutiliza el de arriba
-  const hora = new Intl.DateTimeFormat('es-EC', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(d);
+    const fecha = this.formatDate(iso); // reutiliza el de arriba
+    const hora = new Intl.DateTimeFormat('es-EC', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(d);
 
-  return `${fecha}, ${hora}`;
-}
+    return `${fecha}, ${hora}`;
+  }
   private formatHora(raw?: string[] | string | null): string {
     if (!raw) return '—';
     let first: string;
@@ -1112,10 +1188,11 @@ private formatDateTime(iso: string): string {
     return `${first} m`;
   }
 
-
   private buildCombinedRows(data: any) {
     const registros = Array.isArray(data.registros) ? data.registros : [];
-    const faltas = Array.isArray(data.faltas?.diasFaltados) ? data.faltas!.diasFaltados! : [];
+    const faltas = Array.isArray(data.faltas?.diasFaltados)
+      ? data.faltas!.diasFaltados!
+      : [];
     const regPorFecha = new Map<string, any>();
     for (const r of registros) regPorFecha.set(r.fecha, r);
 
@@ -1127,8 +1204,8 @@ private formatDateTime(iso: string): string {
         horas.length === 0
           ? '—'
           : horas.length === 1
-          ? this.formatHora(horas)
-          : `${this.formatHora(horas)} (+${horas.length - 1})`;
+            ? this.formatHora(horas)
+            : `${this.formatHora(horas)} (+${horas.length - 1})`;
 
       rows.push({
         fechaISO: r.fecha,
@@ -1149,7 +1226,11 @@ private formatDateTime(iso: string): string {
       }
     }
 
-    rows.sort((a, b) => this.parseISOAsLocal(b.fechaISO).getTime() - this.parseISOAsLocal(a.fechaISO).getTime());
+    rows.sort(
+      (a, b) =>
+        this.parseISOAsLocal(b.fechaISO).getTime() -
+        this.parseISOAsLocal(a.fechaISO).getTime(),
+    );
     return rows;
   }
 
@@ -1162,8 +1243,8 @@ private formatDateTime(iso: string): string {
     const right = doc.page.width - doc.page.margins.right;
     const usableWidth = right - left;
 
-    const colW1 = Math.floor(usableWidth * 0.50);
-    const colW2 = Math.floor(usableWidth * 0.20);
+    const colW1 = Math.floor(usableWidth * 0.5);
+    const colW2 = Math.floor(usableWidth * 0.2);
     const colW3 = usableWidth - colW1 - colW2;
 
     const headerBg = '#F3F4F6';
@@ -1177,8 +1258,14 @@ private formatDateTime(iso: string): string {
     doc.rect(left, y, usableWidth, 22).fill(headerBg);
     doc.fillColor('#111827').font('Helvetica-Bold').fontSize(10);
     doc.text('Fecha', left + 8, y + 6, { width: colW1 - 8 });
-    doc.text('Hora(s)', left + colW1 + 8, y + 6, { width: colW2 - 16, align: 'center' });
-    doc.text('Estado', left + colW1 + colW2 + 8, y + 6, { width: colW3 - 16, align: 'right' });
+    doc.text('Hora(s)', left + colW1 + 8, y + 6, {
+      width: colW2 - 16,
+      align: 'center',
+    });
+    doc.text('Estado', left + colW1 + colW2 + 8, y + 6, {
+      width: colW3 - 16,
+      align: 'right',
+    });
     y += 22;
     doc.restore();
 
@@ -1222,7 +1309,12 @@ private formatDateTime(iso: string): string {
 
       // Línea inferior
       doc.save();
-      doc.lineWidth(0.5).strokeColor(border).moveTo(left, y).lineTo(right, y).stroke();
+      doc
+        .lineWidth(0.5)
+        .strokeColor(border)
+        .moveTo(left, y)
+        .lineTo(right, y)
+        .stroke();
       doc.restore();
     }
 
@@ -1231,15 +1323,4 @@ private formatDateTime(iso: string): string {
       doc.text('Sin registros.', left + 8, y + 8, { width: usableWidth - 16 });
     }
   }
-
-
-
-
-
-
-
-
-
-
-
 }
