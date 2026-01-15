@@ -17,7 +17,7 @@ import { ReportsService } from 'src/common/services/reports.service';
 export class MoodleController {
   constructor(
     private readonly moodleService: MoodleService,
-    private readonly asistentesService:AsistentesService,
+    private readonly asistentesService: AsistentesService,
     private readonly reportsService: ReportsService,
   ) {}
 
@@ -72,18 +72,23 @@ export class MoodleController {
     return this.moodleService.getCoursesWithGradesByUsernameV2(username);
   }
 
-    @Get('courses/with-gradesv3/app')
+  @Get('courses/with-gradesv3/app')
   async getCoursesWithGradesv3(@Query('username') username: string) {
     return this.moodleService.getCoursesWithGradesByUsernameV3(username);
   }
 
   @Get('notas/pdf')
   @Header('Content-Type', 'application/pdf')
-  async notasPorCedula(@Query('cedula') cedula: string): Promise<StreamableFile> {
+  async notasPorCedula(
+    @Query('cedula') cedula: string,
+    @Query('cursoId') cursoId?: string,
+  ): Promise<StreamableFile> {
     const { buffer, filename } = await this.reportsService.pdfNotasPorUsername(
       cedula,
       (u) => this.moodleService.getCoursesWithGradesByUsernameV3(u),
-      (u) => this.asistentesService.buscarPorCedula(u),
+
+      // ✅ ahora puede resolver curso “target” si lo mandan
+      (u) => this.asistentesService.buscarPorCedula(u, cursoId),
     );
 
     return new StreamableFile(buffer, {

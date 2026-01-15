@@ -28,7 +28,7 @@ export class AuthService {
     const usuario = await this.usuariosService.findByEmail(email);
     //si usuario no se encuntra validar si es es un estudiante
     if (!usuario) {
-      const estudiante = await this.estudianteService.buscarPorCedula(email);
+      const estudiante = await this.estudianteService.buscarSoloPorCedula(email);
 
       
 

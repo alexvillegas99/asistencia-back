@@ -19,7 +19,7 @@ export class MoodleService {
     // Instancia de axios con timeout global
     this.http = axios.create({
       baseURL: this.baseUrl,
-      timeout: 15000,
+      timeout: 25000,
     });
   }
 

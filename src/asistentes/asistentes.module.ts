@@ -12,6 +12,7 @@ import {
   AsistentesMigradosModelName,
 } from './entities/asistentes-migrados.entity';
 import { ReportsService } from 'src/common/services/reports.service';
+import { Asistencia, AsistenciaModelName, AsistenciaSchema } from 'src/asistencias/entities/asistencia.entity';
 
 @Module({
   imports: [
@@ -31,7 +32,8 @@ import { ReportsService } from 'src/common/services/reports.service';
           // schema.plugin(mongoosePaginate);
           return schema;
         },
-      },
+      }, 
+        { name: Asistencia.name, useFactory: () => AsistenciaSchema },
     ]),
     CursoModule,
   ],

@@ -17,10 +17,10 @@ import {
 import { AsistentesService } from './asistentes.service';
 import { CreateAsistenteDto } from './dto/create-asistente.dto';
 import { UpdateAsistenteDto } from './dto/update-asistente.dto';
-import { ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import * as XLSX from 'xlsx';
 import { ReportsService } from 'src/common/services/reports.service';
+import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 @ApiTags('Asistentes')
 @Controller('asistentes')
 export class AsistentesController {
@@ -78,7 +78,11 @@ export class AsistentesController {
       }
 
       // Generar QR y enviar como archivo ZIP
-      await this.asistentesService.generateQrZip(asistentes, res);
+      await this.asistentesService.generateQrZip(
+        asistentes,
+        res,
+        cursoId.cursoId,
+      );
     } catch (error) {
       console.error('Error al generar QR ZIP:', error);
       return res
@@ -133,6 +137,7 @@ export class AsistentesController {
   ) {
     let { nombre, cedula, curso, negocio, telefono, correo } = query;
     console.log(nombre);
+    console.log(query);
     // Validar los parámetros requeridos
     if (!nombre || !cedula || !curso || !negocio) {
       throw new HttpException(
@@ -302,9 +307,12 @@ export class AsistentesController {
   }
 
   @Get('buscar/por-cedula/:cedula')
-  async buscarPorCedula(@Param('cedula') cedula: string) {
+  async buscarPorCedula(
+    @Param('cedula') cedula: string,
+    @Param('curso') curso: string,
+  ) {
     console.log('Buscando asistente por cédula:', cedula);
-    return await this.asistentesService.buscarPorCedula(cedula);
+    return await this.asistentesService.buscarPorCedula(cedula, curso);
   }
 
   // POST /asistentes/migracion/curso/ABC123?confirm=true&batchSize=5000
@@ -389,15 +397,50 @@ export class AsistentesController {
 
   @Get('ov/:cedula')
   @Header('Content-Type', 'application/pdf')
- async ov(@Param('cedula') cedula: string): Promise<StreamableFile> {
-  const { buffer, filename } = await this.ovReport.pdfOVPorCedula(
-    cedula,
-    (c) => this.asistentesService.buscarPorCedula(c),
-  );
+  async ov(
+    @Param('cedula') cedula: string,
+    @Param('curso') curso: string,
+  ): Promise<StreamableFile> {
+    const { buffer, filename } = await this.ovReport.pdfOVPorCedula(
+      cedula,
+      (c) => this.asistentesService.buscarPorCedula(c, curso),
+    );
 
-  return new StreamableFile(buffer, {
-    type: 'application/pdf',
-    disposition: `attachment; filename="${filename}"`,
-  });
+    return new StreamableFile(buffer, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${filename}"`,
+    });
+  }
+
+  @Post('actualizar-cursos/multiple')
+  @ApiOperation({
+    summary: 'Actualizar cursos (multi-curso) de un asistente por cédula',
+    description:
+      'Busca al asistente por cédula y reemplaza completamente el array `cursos`. Opcionalmente elimina el campo legacy `curso`.',
+  })
+
+  @ApiResponse({
+    status: 200,
+    description: 'Cursos actualizados correctamente',
+    schema: {
+      example: {
+        ok: true,
+        cedula: '1751865914',
+        cursos: [
+          '68b5b9befe87904270c107ba',
+          '68b5ba02fe87904270c107bb',
+        ],
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Asistente no encontrado',
+    schema: { example: { message: 'Asistente no encontrado' } },
+  })
+  @Post('actualizar-cursos/multiple')
+  async actualizarCursos(@Body() body: { cedula: string; cursos: string[] }) {
+    return await this.asistentesService.actualizarCursosString(body);
+  }
 }
-}
+ 

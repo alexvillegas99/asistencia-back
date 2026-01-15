@@ -97,41 +97,62 @@ export class CursoService {
     }
   }
 
-  async findAll(): Promise<any[]> {
-    try {
-      return this.cursoModel.aggregate([
-        {
-          $addFields: {
-            idAsString: { $toString: '$_id' },
-          },
+async findAll(): Promise<any[]> {
+  try {
+    return this.cursoModel.aggregate([
+      {
+        $addFields: {
+          idAsString: { $toString: '$_id' },
         },
-        {
-          $lookup: {
-            from: 'asistentes',
-            localField: 'idAsString',
-            foreignField: 'curso',
-            as: 'asistentes',
-          },
+      },
+      {
+        $lookup: {
+          from: 'asistentes',
+          let: { cursoIdStr: '$idAsString' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $or: [
+                    // legacy: curso == id string
+                    { $eq: ['$curso', '$$cursoIdStr'] },
+
+                    // nuevo: cursos array contiene id string
+                    {
+                      $and: [
+                        { $isArray: '$cursos' },
+                        { $in: ['$$cursoIdStr', '$cursos'] },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+            { $project: { _id: 1 } }, // liviano: solo para contar
+          ],
+          as: 'asistentes',
         },
-        {
-          $project: {
-            nombre: 1,
-            estado: 1,
-            diasCurso: 1,
-            diasActuales: 1,
-            createdAt: 1,
-            totalAsistentes: { $size: '$asistentes' },
-          },
+      },
+      {
+        $project: {
+          nombre: 1,
+          estado: 1,
+          diasCurso: 1,
+          diasActuales: 1,
+          createdAt: 1,
+          totalAsistentes: { $size: '$asistentes' },
         },
-        { $sort: { createdAt: -1 } },
-      ]);
-    } catch (error) {
-      throw new InternalServerErrorException(
-        'Error al obtener los cursos',
-        error.message,
-      );
-    }
+      },
+      { $sort: { createdAt: -1 } },
+    ]);
+  } catch (error) {
+    throw new InternalServerErrorException(
+      'Error al obtener los cursos',
+      error.message,
+    );
   }
+}
+
 
   async findOne(id: string): Promise<CursoDocument> {
     try {

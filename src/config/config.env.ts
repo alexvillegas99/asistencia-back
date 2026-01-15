@@ -13,6 +13,7 @@ export default () => ({
     bucketRegion: process.env.AWS_S3_BUCKET_REGION || '',
   },
   FIREBASE_CONFIG_BASE64: process.env.FIREBASE_CONFIG_BASE64 || '',
+  IMG_DEFAULT: process.env.IMG_DEFAULT || '',
 });
 export const PORT = 'port';
 export const NODE_ENV = 'node_env';
@@ -27,4 +28,5 @@ export const AWS_SECRET_ACCESS_KEY = 'amazon3s.secretAccessKey';
 export const AWS_S3_BUCKET_NAME = 'amazon3s.bucketName';
 export const AWS_S3_BUCKET_REGION = 'amazon3s.bucketRegion';
 export const FIREBASE_CONFIG_BASE64 = 'FIREBASE_CONFIG_BASE64';
+export const IMG_DEFAULT = 'IMG_DEFAULT';
 

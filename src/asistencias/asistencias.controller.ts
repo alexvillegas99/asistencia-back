@@ -15,7 +15,8 @@ import { AsistenciasService } from './asistencias.service';
 import { CreateAsistenciaDto } from './dto/create-asistencia.dto';
 import { ApiBody, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
-const BACKGROUND_URL = 'https://corpfourier.s3.us-east-2.amazonaws.com/marca_agua/marca-reportes.png'; // 👈 cambia aquí si no usas env
+const BACKGROUND_URL =
+  'https://corpfourier.s3.us-east-2.amazonaws.com/marca_agua/marca-reportes.png'; // 👈 cambia aquí si no usas env
 
 @ApiTags('Asistencias')
 @Controller('asistencias')
@@ -37,9 +38,6 @@ export class AsistenciasController {
   async findAll(@Query('idCurso') idCurso: string) {
     return this.asistenciasService.generateAsistenciaReportDebug(idCurso);
   }
-
-  
-
 
   @Post('registrar')
   @ApiBody({
@@ -69,13 +67,12 @@ export class AsistenciasController {
       }
 
       // Validar si el asistente pertenece al curso
-      const perteneceAlCurso:any =
+      const perteneceAlCurso: any =
         await this.asistenciasService.validarAsistenteEnCurso(
-          data.cedula
+          data.cedula,
+          data.cursoId,
         );
-        console.log(perteneceAlCurso)
-
-
+      console.log(perteneceAlCurso);
 
       if (!perteneceAlCurso.valid) {
         throw new NotFoundException(
@@ -86,9 +83,9 @@ export class AsistenciasController {
       // Registrar asistencia si no existe en el día actual
       const asistenciaRegistrada =
         await this.asistenciasService.registrarAsistencia(
-          data.cedula, 
+          data.cedula,
           data.cursoId,
-        ); 
+        );
       if (asistenciaRegistrada === 'completo') {
         throw new ConflictException(
           'El asistente ya tiene registrada la asistencia para hoy.',
@@ -110,26 +107,35 @@ export class AsistenciasController {
     }
   }
 
-  @Get('por-cedula')
-  @ApiQuery({ name: 'cedula', required: true, example: '1850459767' })
-  async getPorCedula(@Query('cedula') cedula: string) {
-    if (!cedula?.trim()) throw new BadRequestException('La cédula es requerida.');
-    return this.asistenciasService.reportePorCedulaTotal(cedula.trim());
-  }
+@Get('por-cedula')
+@ApiQuery({ name: 'cedula', required: true, example: '1850459767' })
+@ApiQuery({ name: 'cursoId', required: false, example: '676f...' })
+async getPorCedula(
+  @Query('cedula') cedula: string,
+  @Query('cursoId') cursoId?: string,
+) {
+  if (!cedula?.trim()) throw new BadRequestException('La cédula es requerida.');
+  console.log('cursoId', cursoId);
+  console.log('cedula', cedula);
+  return this.asistenciasService.reportePorCedulaTotal(cedula.trim(), cursoId);
+}
 
- @Get('por-cedula/pdf')
-  @ApiQuery({ name: 'cedula', required: true })
-  @Header('Content-Type', 'application/pdf')
-  async pdfPorCedula(
-    @Query('cedula') cedula: string,
-  ): Promise<StreamableFile> {
-    const { buffer, filename } =
-      await this.asistenciasService.pdfPorCedula(cedula);
 
-    // Puedes fijar el filename dinámico aquí:
-    return new StreamableFile(buffer, {
-      type: 'application/pdf',
-      disposition: `attachment; filename="${filename}"`,
-    });
-  }
+@Get('por-cedula/pdf')
+@ApiQuery({ name: 'cedula', required: true })
+@ApiQuery({ name: 'cursoId', required: false })
+@Header('Content-Type', 'application/pdf')
+async pdfPorCedula(
+  @Query('cedula') cedula: string,
+  @Query('cursoId') cursoId?: string,
+): Promise<StreamableFile> {
+  const { buffer, filename } =
+    await this.asistenciasService.pdfPorCedula(cedula, cursoId);
+
+  return new StreamableFile(buffer, {
+    type: 'application/pdf',
+    disposition: `attachment; filename="${filename}"`,
+  });
+}
+
 }

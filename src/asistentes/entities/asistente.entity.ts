@@ -48,7 +48,6 @@ class CitaEtapaSub {
 
   @Prop({ type: [CitaLogSchema], default: [] })
   logs: CitaLogSub[];
-
 }
 const CitaEtapaSchema = SchemaFactory.createForClass(CitaEtapaSub);
 
@@ -82,7 +81,6 @@ class OrientacionVocacionalSub {
   @Prop({ type: CitaEtapaSchema, default: () => ({ logs: [] }) })
   cuarta: CitaEtapaSub;
 
-  
   @Prop({ type: String, required: false, default: null })
   siguienteCitaISO?: string;
 }
@@ -97,7 +95,7 @@ export class Asistentes {
   @Prop({ type: String, required: true }) nombre: string;
   @Prop({ type: String }) qr?: string;
   @Prop({ type: String }) negocio?: string;
-   // ✅ NUEVOS CAMPOS OPCIONALES
+  // ✅ NUEVOS CAMPOS OPCIONALES
   @Prop({ type: String, required: false, trim: true })
   telefono?: string;
 
@@ -107,6 +105,8 @@ export class Asistentes {
   @Prop({ type: Date, default: Date.now }) createdAt: Date;
   @Prop({ type: Date, default: Date.now }) createdAtEcuador: Date;
   @Prop({ type: String, ref: 'Curso', required: true }) curso: string;
+  @Prop({ type: [{ type: String, ref: 'Curso' }], default: [] })
+  cursos: string[];
   @Prop({ type: Boolean, default: true }) estado: boolean;
   @Prop({ type: Number, default: 0 }) asistencias: number;
   @Prop({ type: Number, default: 0 }) inasistencias: number;

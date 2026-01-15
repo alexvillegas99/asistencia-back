@@ -30,4 +30,4 @@ export class Curso {
 
 export const CursoSchema = SchemaFactory.createForClass(Curso);
 
-export const CursoModelName = 'cursos';
+export const CursoModelName = 'Curso';

@@ -81,91 +81,181 @@ export class AsistenciasService {
   }
 
   // Leer todas las asistencias agrupadas por fecha
-  async generateAsistenciaReportDebug(cursoId: string) {
-    try {
-      // Paso 1: Obtener todos los asistentes que pertenecen al curso
-      const asistentes = await this.asistentesModel
-        .find({ curso: cursoId })
-        .exec();
-      console.log('Paso 1: Asistentes del curso:', asistentes);
+// Leer todas las asistencias agrupadas por fecha
+// pero separando por curso (si un alumno está en 2 cursos → 2 registros)
+async generateAsistenciaReportDebug(cursoId: string) {
+  try {
+    // Paso 1: Obtener todos los asistentes que pertenecen al curso (match inicial por cursoId)
+    const asistentes = await this.asistentesModel
+      .find({ $or: [{ cursos: cursoId }, { curso: cursoId }] })
+      .exec();
 
-      if (asistentes.length === 0) {
-        throw new NotFoundException(
-          'No se encontraron asistentes para el curso.',
-        );
-      }
+    console.log('Paso 1: Asistentes del curso:', asistentes);
 
-      // Paso 2: Extraer los IDs de los asistentes
-      const asistentesIds = asistentes.map((asistente) => asistente._id);
-      console.log('Paso 2: IDs de los asistentes:', asistentesIds);
-
-      // Paso 3: Buscar las asistencias asociadas a los IDs de los asistentes
-      const asistencias = await this.asistenciaModel
-        .find({ asistenteId: { $in: asistentesIds } })
-        .exec();
-      console.log('Paso 3: Asistencias encontradas:', asistencias);
-
-      if (asistencias.length === 0) {
-        throw new NotFoundException(
-          'No se encontraron asistencias para los asistentes.',
-        );
-      }
-
-      // Paso 4: Crear un mapa para relacionar los asistentes por su ID
-      const asistentesMap = new Map(
-        asistentes.map((asistente) => [asistente._id.toString(), asistente]),
-      );
-      console.log('Paso 4: Mapa de asistentes por ID:', asistentesMap);
-
-      // Paso 5: Agrupar asistencias por fecha y por cedula
-      const agrupadas = asistencias.reduce((result, asistencia) => {
-        const fecha = asistencia.fecha.toString(); // Fecha en formato YYYY-MM-DD
-        const asistenteId = asistencia.asistenteId.toString();
-
-        if (!result[fecha]) {
-          result[fecha] = {};
-        }
-
-        if (!result[fecha][asistenteId]) {
-          result[fecha][asistenteId] = {
-            cedula: asistentesMap.get(asistenteId)?.cedula || null,
-            nombre: asistentesMap.get(asistenteId)?.nombre || null,
-            entrada: null,
-            salida: null,
-          };
-        }
-
-        // Determinar si la hora es entrada o salida
-        if (!result[fecha][asistenteId].entrada) {
-          result[fecha][asistenteId].entrada = asistencia.hora;
-        } else if (!result[fecha][asistenteId].salida) {
-          result[fecha][asistenteId].salida = asistencia.hora;
-        }
-
-        return result;
-      }, {});
-
-      // Paso 6: Convertir a un array para el formato de salida
-      const resultado = Object.entries(agrupadas).map(
-        ([fecha, asistentesPorFecha]) => ({
-          fecha,
-          asistentes: Object.values(asistentesPorFecha),
-        }),
-      );
-      console.log(
-        'Paso 6: Asistencias agrupadas con entrada y salida:',
-        resultado,
-      );
-
-      return resultado;
-    } catch (error) {
-      console.error('Error en generateAsistenciaReportDebug:', error);
-      throw new InternalServerErrorException(
-        'Error al generar el reporte de asistencias por curso',
-        error.message,
-      );
+    if (asistentes.length === 0) {
+      throw new NotFoundException('No se encontraron asistentes para el curso.');
     }
+
+    // Paso 2: Extraer los IDs de los asistentes
+    const asistentesIds = asistentes.map((asistente) => asistente._id);
+    console.log('Paso 2: IDs de los asistentes:', asistentesIds);
+
+    // Paso 3: Buscar las asistencias asociadas a los IDs de los asistentes
+    // ✅ IMPORTANTE: NO filtramos por curso aquí, porque quieres traerlas de todos los cursos del alumno
+    const asistencias = await this.asistenciaModel
+      .find({
+        asistenteId: { $in: asistentesIds },
+        // curso: cursoId,  ❌ ya no, porque si no solo traerías 1 curso
+      })
+      .sort({ fecha: 1, hora: 1 })
+      .exec();
+
+    console.log('Paso 3: Asistencias encontradas:', asistencias);
+
+    if (asistencias.length === 0) {
+      throw new NotFoundException('No se encontraron asistencias para los asistentes.');
+    }
+
+    // Paso 4: Crear un mapa para relacionar los asistentes por su ID
+    const asistentesMap = new Map(
+      asistentes.map((asistente) => [asistente._id.toString(), asistente]),
+    );
+    console.log('Paso 4: Mapa de asistentes por ID:', asistentesMap);
+
+    // Paso 5: Agrupar asistencias por fecha y por (asistenteId + curso)
+    const agrupadas = asistencias.reduce((result, asistencia) => {
+      const fecha = asistencia.fecha.toString();
+      const asistenteId = asistencia.asistenteId.toString();
+      const curso = (asistencia.curso || '').toString();
+
+      if (!result[fecha]) result[fecha] = {};
+
+      // ✅ clave por curso para que salga 1 registro por curso
+      const key = `${asistenteId}|${curso}`;
+
+      if (!result[fecha][key]) {
+        result[fecha][key] = {
+          cedula: asistentesMap.get(asistenteId)?.cedula || asistencia.cedula || null,
+          nombre: asistentesMap.get(asistenteId)?.nombre || null,
+          curso, // ✅ se especifica el curso
+          entrada: null,
+          salida: null,
+        };
+      }
+
+      // entrada/salida (por orden ya que viene ordenado por hora)
+      if (!result[fecha][key].entrada) {
+        result[fecha][key].entrada = asistencia.hora;
+      } else if (!result[fecha][key].salida) {
+        result[fecha][key].salida = asistencia.hora;
+      } else {
+        // si hay más de 2 marcas, mantenemos la última como salida
+        result[fecha][key].salida = asistencia.hora;
+      }
+
+      return result;
+    }, {} as Record<string, Record<string, any>>);
+
+    // Paso 6: Convertir a un array para el formato de salida
+    const resultado = Object.entries(agrupadas).map(([fecha, asistentesPorFecha]) => ({
+      fecha,
+      asistentes: Object.values(asistentesPorFecha),
+    }));
+
+    console.log('Paso 6: Asistencias agrupadas con entrada y salida:', resultado);
+
+    return resultado;
+  } catch (error) {
+    console.error('Error en generateAsistenciaReportDebug:', error);
+    throw new InternalServerErrorException(
+      'Error al generar el reporte de asistencias por curso',
+      error.message,
+    );
   }
+}
+
+
+  
+async generateAsistenciaPorCedula(cedula: string) {
+  try {
+    const ced = (cedula || '').trim();
+    if (!ced) throw new NotFoundException('Cédula requerida.');
+
+    const pipeline: any[] = [
+      // 1) Filtrar asistencias por cédula
+      { $match: { cedula: ced } },
+
+      // 2) Ordenar para definir entrada/salida bien
+      { $sort: { curso: 1, fecha: 1, hora: 1 } },
+
+      // 3) Agrupar por (curso, fecha)
+      {
+        $group: {
+          _id: { curso: '$curso', fecha: '$fecha' },
+          cedula: { $first: '$cedula' },
+          entrada: { $first: '$hora' },
+          salida: { $last: '$hora' },
+        },
+      },
+
+      // 4) (Opcional) traer nombre del curso si tienes colección "cursos"
+      {
+        $lookup: {
+          from: 'cursos',
+          localField: '_id.curso',
+          foreignField: '_id',
+          as: 'cursoDoc',
+        },
+      },
+      { $unwind: { path: '$cursoDoc', preserveNullAndEmptyArrays: true } },
+
+      // 5) Agrupar por curso: un bloque por curso
+      {
+        $group: {
+          _id: '$_id.curso',
+          cursoId: { $first: '$_id.curso' },
+          cursoNombre: { $first: { $ifNull: ['$cursoDoc.nombre', '$_id.curso'] } },
+          cedula: { $first: '$cedula' },
+          asistencias: {
+            $push: {
+              fecha: '$_id.fecha',
+              entrada: '$entrada',
+              salida: '$salida',
+            },
+          },
+        },
+      },
+
+      // 6) ordenar por curso (y dentro por fecha ya viene por sort previo)
+      { $sort: { cursoNombre: 1 } },
+
+      // 7) formato final
+      {
+        $project: {
+          _id: 0,
+          cursoId: 1,
+          cursoNombre: 1,
+          cedula: 1,
+          asistencias: 1,
+        },
+      },
+    ];
+
+    const data = await this.asistenciaModel.aggregate(pipeline).exec();
+
+    if (!data.length) {
+      throw new NotFoundException('No se encontraron asistencias para la cédula.');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error generateAsistenciaPorCedula:', error);
+    throw new InternalServerErrorException(
+      'Error al generar reporte por cédula',
+      error?.message,
+    );
+  }
+}
 
   async seedDatabase() {
     try {
@@ -263,45 +353,44 @@ export class AsistenciasService {
   }
 
   // Validar si el asistente pertenece al curso
-  async validarAsistenteEnCurso(cedula: string): Promise<any> {
-    const asistente = await this.asistentesModel.findOne({ cedula }).exec();
+  async validarAsistenteEnCurso(cedula: string, cursoId: string): Promise<any> {
+    const asistente: any = await this.asistentesModel
+      .findOne({ cedula })
+      .exec();
 
     if (!asistente) {
       return { valid: false, asistente: null };
     }
 
-    // Buscar curso por _id (si el campo parece ObjectId) o por nombre
-    let cursoDoc: any = null;
-    const cursoField = asistente.curso;
+    // ✅ compat: array + legacy
+    const cursosActuales = new Set<string>([
+      ...(Array.isArray((asistente as any).cursos)
+        ? (asistente as any).cursos
+        : []),
+      ...((asistente as any).curso ? [(asistente as any).curso] : []),
+    ]);
 
-    if (cursoField && Types.ObjectId.isValid(String(cursoField))) {
-      cursoDoc = await this.cursosModel.findById(cursoField).lean().exec();
-    } else if (typeof cursoField === 'string') {
-      // si guardaste nombre directamente en `curso`
-      cursoDoc = await this.cursosModel
-        .findOne({ nombre: cursoField })
-        .lean()
-        .exec();
+    // ✅ validar que pertenezca al curso recibido
+    if (!cursoId || !cursosActuales.has(String(cursoId))) {
+      return { valid: false, asistente: null };
     }
 
-    // nombre del curso (doc o lo que venga en el asistente)
-    const cursoNombre =
-      (cursoDoc && cursoDoc.nombre) ||
-      (typeof cursoField === 'string' ? cursoField : null);
+    // ✅ curso correcto por ID
+    const cursoDoc = await this.cursosModel.findById(cursoId).lean().exec();
 
-    // total de días de clase contados
-    const diasActuales = Number(
-      (cursoDoc && cursoDoc.diasActuales) ?? 30, // fallback como en el front
-    );
+    const cursoNombre = (cursoDoc && cursoDoc.nombre) || null;
 
-    // total de asistencias (activas + inactivas + adicionales)
-    asistente.asistencias = asistente.asistencias + 1;
+    const diasActuales = Number((cursoDoc && cursoDoc.diasActuales) ?? 30);
+
+    // OJO: aquí tú estás incrementando asistencias en la validación (no recomendado)
+    // Lo dejo como estaba (sin tocar lógica), pero te sugiero moverlo al registrarAsistencia.
+    asistente.asistencias = (asistente.asistencias ?? 0) + 1;
+
     const totalAsistencias =
       (asistente.asistencias ?? 0) +
       (asistente.asistenciasInactivas ?? 0) +
       (asistente.asistenciasAdicionales ?? 0);
 
-    // porcentaje (redondeado, tope 100%). Si diasActuales=0 => 0
     const porcentaje =
       diasActuales > 0
         ? Math.min(100, Math.round((totalAsistencias / diasActuales) * 100))
@@ -312,7 +401,8 @@ export class AsistenciasService {
       asistente: {
         ...asistente.toObject(),
         cursoNombre,
-        porcentaje, // 👈 agregado
+        porcentaje,
+        cursoId, // ✅ útil devolverlo
       },
     };
   }
@@ -356,148 +446,65 @@ export class AsistenciasService {
 
   async registrarAsistencia(cedula: string, cursoId: string): Promise<string> {
     try {
-      // Agregar Días para probar
-      const ahora = new Date(); // Fecha y hora actual
+      // ✅ Hora Ecuador (consistente)
+      const nowEc = new Date(Date.now() - 5 * 60 * 60 * 1000);
+      const fechaHoy = nowEc.toISOString().slice(0, 10); // YYYY-MM-DD
+      const horaActual = nowEc.toTimeString().split(' ')[0]; // HH:mm:ss
 
-      // ✅ Solo corregimos la fecha local (sin UTC)
-      const año = ahora.getFullYear();
-      const mes = String(ahora.getMonth() + 1).padStart(2, '0');
-      const dia = String(ahora.getDate()).padStart(2, '0');
-      const fechaHoy = `${año}-${mes}-${dia}`; // Fecha actual en formato YYYY-MM-DD
-
-      // La hora sí puede quedarse igual
-      const horaActual = ahora.toTimeString().split(' ')[0]; // Hora actual en formato HH:mm:ss
-
-      console.log(`Fecha actual: ${fechaHoy}, Hora actual: ${horaActual}`);
-
-      // Verificar cuántos registros existen hoy para el usuario
-      const registrosHoy = await this.asistenciaModel
-        .find({ cedula, fecha: fechaHoy })
-        .exec();
-
-      // Obtener el último registro de asistencia del día
-      const ultimoRegistro: any =
-        registrosHoy.length > 0 ? registrosHoy[registrosHoy.length - 1] : null;
-
-      if (ultimoRegistro) {
-        // Calcular la diferencia en milisegundos entre el último registro y el actual
-        const diferenciaEnMilisegundos =
-          ahora.getTime() - new Date(ultimoRegistro.createdAt).getTime();
-        const diferenciaEnMinutos = diferenciaEnMilisegundos / (1000 * 60); // Convertir a minutos
-
-        console.log(`Diferencia en minutos: ${diferenciaEnMinutos}`);
-
-        if (diferenciaEnMinutos < 30) {
-          return 'espere'; // Intervalo de 30 minutos no cumplido
-        }
-      }
-
-      // Verificar si el usuario está asociado al curso
-      const asistenteID = await this.asistentesModel
-        .findOne({ cedula })
+      // 1) Validar que el asistente exista y pertenezca al curso (multi-curso)
+      const asistente = await this.asistentesModel
+        .findOne({
+          cedula,
+          $or: [{ cursos: cursoId }, { curso: cursoId }],
+        })
         .lean()
         .exec();
-      if (!asistenteID) {
-        return 'El usuario no está registrado en el curso.';
+
+      if (!asistente) return 'El usuario no está registrado en el curso.';
+
+      // 2) Buscar registros del día PERO del mismo curso
+      const registrosHoy = await this.asistenciaModel
+        .find({ cedula, curso: cursoId, fecha: fechaHoy })
+        .sort({ createdAt: 1 })
+        .lean()
+        .exec();
+
+      const ultimoRegistro: any = registrosHoy.length
+        ? registrosHoy[registrosHoy.length - 1]
+        : null;
+
+      // 3) Cooldown 30 minutos (por curso)
+      if (ultimoRegistro) {
+        const diffMin =
+          (nowEc.getTime() - new Date(ultimoRegistro.createdAt).getTime()) /
+          (1000 * 60);
+
+        if (diffMin < 30) return 'espere';
       }
 
-      // Registrar nueva asistencia
-      const nuevaAsistencia = new this.asistenciaModel({
+      // 4) Insertar asistencia
+      // ✅ ideal: tener índice único {cedula, curso, fecha} para impedir duplicados
+      await this.asistenciaModel.create({
         cedula,
         curso: cursoId,
         fecha: fechaHoy,
-        hora: horaActual, // Guardar la hora en formato HH:mm:ss
-        asistenteId: asistenteID._id.toString(),
+        hora: horaActual,
+        asistenteId: asistente._id.toString(),
+        // fechaEcuador ya la setea tu schema
       });
 
-      //validar si el curso no a sido actualizado en la fecha caso contrario agregar +1 en  diasActuales
-      const hoyEc = new Date(Date.now() - 5 * 60 * 60 * 1000)
-        .toISOString()
-        .slice(0, 10);
-      const result = await this.cursosModel.findOneAndUpdate(
-        {
-          _id: cursoId,
-          $expr: {
-            $or: [
-              {
-                $ne: [
-                  {
-                    $dateToString: {
-                      format: '%Y-%m-%d',
-                      date: '$updatedAt',
-                      timezone: 'America/Guayaquil',
-                    },
-                  },
-                  hoyEc,
-                ],
-              },
-              { $eq: ['$diasActuales', 0] },
-            ],
-          },
-        },
-        {
-          $inc: { diasActuales: 1 },
-          $set: { updatedAt: new Date() },
-        },
-        { new: true }, // <- devuelve el documento actualizado
-      );
+      // 5) ✅ Actualizar días del curso (recomendado con campo dedicado)
+      // Si todavía no lo tienes, te dejo la opción A y la opción B abajo.
+      await this.incrementarDiasActualesSiCorresponde(cursoId, fechaHoy);
 
-      try {
-        if (registrosHoy.length === 0) {
-          const inc = asistenteID.estado
-            ? { asistencias: 1 }
-            : { asistenciasInactivas: 1 };
+      // 6) 🚫 Ya NO incrementar asistencias en Asistente
+      // (todo se calcula desde asistenciaModel)
 
-          await this.asistentesModel
-            .updateOne({ _id: asistenteID._id }, { $inc: inc })
-            .exec();
-        }
-        if (registrosHoy.length === 0 && asistenteID.negocio) {
-          //Si no hay registros, se registra la entrada enviar mensaje de entrada registrada
+      // 7) Bitrix: solo si fue la primera del día para ese curso
+      if (registrosHoy.length === 0 && asistente.negocio) {
+        this.notificarBitrixEntradaRegistrada(asistente.negocio);
+      }
 
-          //Usar axios para llamar a una api de bitrix y mandar un mensaje de entrada registrada
-
-          const ahora = new Date();
-          const opciones: Intl.DateTimeFormatOptions = {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-          };
-
-          const formatoFecha = ahora
-            .toLocaleString('es-ES', opciones)
-            .replace(',', '');
-          console.log(`Fecha y hora formateada: ${formatoFecha}`);
-
-          const negocio = asistenteID.negocio;
-          console.log(
-            `https://nicpreu.bitrix24.es/rest/1/2dc3j6lin4etym89/crm.deal.update`,
-          );
-          // Enviar la fecha en la URL
-          const data = {
-            ID: negocio.trim(),
-            fields: {
-              UF_CRM_1760998213: formatoFecha,
-            },
-          };
-
-          console.log('Consulta a enviar:', JSON.stringify(data, null, 2)); // Imprime la consulta en formato JSON
-
-          axios
-            .post(
-              `https://nicpreu.bitrix24.es/rest/1/2dc3j6lin4etym89/crm.deal.update`,
-              data,
-              {
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-              },
-            )
-            .then((response) => console.log('Respuesta:', response.data))
-            .catch((error) => console.error('Error:', error));
-        }
-      } catch (error) {}
-      await nuevaAsistencia.save();
       return 'exito';
     } catch (error) {
       console.error('Error al registrar la asistencia:', error);
@@ -506,6 +513,70 @@ export class AsistenciasService {
         error.message,
       );
     }
+  }
+
+  // BITRIX_WEBHOOK_URL=https://nicpreu.bitrix24.es/rest/1/XXXX/crm.deal.update
+  private readonly BITRIX_DEAL_UPDATE_URL =
+    'https://nicpreu.bitrix24.es/rest/1/2dc3j6lin4etym89/crm.deal.update';
+
+  // Campo Bitrix donde guardas "entrada registrada"
+  private readonly BITRIX_FIELD_ENTRADA = 'UF_CRM_1760998213';
+  private async notificarBitrixEntradaRegistrada(
+    negocioId: string,
+  ): Promise<void> {
+    try {
+      const dealId = (negocioId || '').trim();
+      if (!dealId) return;
+
+      // Fecha Ecuador (dd/mm/yyyy)
+      const nowEc = new Date(Date.now() - 5 * 60 * 60 * 1000);
+      const day = String(nowEc.getDate()).padStart(2, '0');
+      const month = String(nowEc.getMonth() + 1).padStart(2, '0');
+      const year = nowEc.getFullYear();
+      const fecha = `${day}/${month}/${year}`;
+
+      const payload = {
+        ID: dealId,
+        fields: {
+          [this.BITRIX_FIELD_ENTRADA]: fecha,
+        },
+      };
+
+      const resp = await axios.post(this.BITRIX_DEAL_UPDATE_URL, payload, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 8000,
+      });
+
+      // Bitrix suele responder { result: true } o similar
+      this.logger.log(
+        `Bitrix deal.update OK. dealId=${dealId} resp=${JSON.stringify(resp.data)}`,
+      );
+    } catch (err: any) {
+      // Importante: NO romper el flujo de asistencia
+      const msg = err?.response?.data
+        ? JSON.stringify(err.response.data)
+        : err?.message || String(err);
+
+      this.logger.warn(`Bitrix deal.update FAIL: ${msg}`);
+    }
+  }
+
+  private async incrementarDiasActualesSiCorresponde(
+    cursoId: string,
+    fechaHoyEc: string,
+  ) {
+    await this.cursosModel
+      .updateOne(
+        {
+          _id: cursoId,
+          $or: [
+            { ultimaClaseFecha: { $ne: fechaHoyEc } },
+            { ultimaClaseFecha: null },
+          ],
+        },
+        { $inc: { diasActuales: 1 }, $set: { ultimaClaseFecha: fechaHoyEc } },
+      )
+      .exec();
   }
 
   // Corre todos los días a las 22:00 hora Ecuador
@@ -534,7 +605,7 @@ export class AsistenciasService {
 
       // 2. Obtener asistentes del curso
       const asistentes = await this.asistentesModel
-        .find({ curso: curso._id })
+        .find({ $or: [{ cursos: curso._id.toString() }, { curso: curso._id }] })
         .exec();
 
       for (const asistente of asistentes) {
@@ -558,259 +629,260 @@ export class AsistenciasService {
       }
     }
   }
-  async reportePorCedulaTotal(cedula: string) {
-    // 1) Asistente
-    const asistente = await this.asistentesModel
-      .findOne({ cedula })
-      .lean()
-      .exec();
-    if (!asistente) {
-      throw new NotFoundException(`No existe asistente con cédula ${cedula}`);
-    }
+  async reportePorCedulaTotal(cedula: string, cursoId?: string) {
+  // 1) Asistente
+  const asistente: any = await this.asistentesModel.findOne({ cedula }).lean().exec();
 
-    // 2) Curso (acepta ObjectId o nombre string)
-    let cursoDoc: any = null;
-    const cursoField = asistente.curso;
-
-    if (cursoField && Types.ObjectId.isValid(String(cursoField))) {
-      cursoDoc = await this.cursosModel.findById(cursoField).lean().exec();
-    } else if (typeof cursoField === 'string') {
-      cursoDoc = await this.cursosModel
-        .findOne({ nombre: cursoField })
-        .lean()
-        .exec();
-    }
-
-    const curso: any = cursoDoc
-      ? {
-          id: String(cursoDoc._id),
-          nombre: cursoDoc.nombre ?? null,
-          estado: cursoDoc.estado ?? null,
-          diasActuales:
-            typeof cursoDoc.diasActuales === 'number'
-              ? cursoDoc.diasActuales
-              : null,
-          diasCurso:
-            typeof cursoDoc.diasCurso === 'number' ? cursoDoc.diasCurso : null,
-          updatedAt: cursoDoc.updatedAt ?? null,
-          imagen: cursoDoc.imagen ?? null,
-          fechasEsperadas: Array.isArray(cursoDoc.fechasEsperadas)
-            ? cursoDoc.fechasEsperadas
-            : [],
-        }
-      : {
-          id:
-            cursoField && Types.ObjectId.isValid(String(cursoField))
-              ? String(cursoField)
-              : null,
-          nombre: typeof cursoField === 'string' ? cursoField : null,
-          estado: null,
-          diasActuales: null,
-          diasCurso: null,
-          updatedAt: null,
-          imagen: null,
-          fechasEsperadas: [],
-        };
-
-    // 3) Obtener todas las cédulas del mismo curso
-    const cursoMatchOr = [];
-    if (cursoDoc) {
-      cursoMatchOr.push({ curso: cursoDoc._id });
-      cursoMatchOr.push({ curso: cursoDoc.nombre });
-    } else if (cursoField) {
-      cursoMatchOr.push({ curso: cursoField });
-    }
-
-    let cedulasCurso: string[] = [];
-    if (cursoMatchOr.length > 0) {
-      const asistentesCurso = await this.asistentesModel
-        .find({ $or: cursoMatchOr }, { cedula: 1 })
-        .lean()
-        .exec();
-      cedulasCurso = (asistentesCurso ?? [])
-        .map((a: any) => a.cedula)
-        .filter((x: any) => typeof x === 'string');
-    }
-
-    // 4) Agregación: registros/resumen del asistente y "top" del curso
-    const [aggr] = await this.asistenciaModel
-      .aggregate([
-        {
-          $facet: {
-            registros: [
-              { $match: { cedula } },
-              { $sort: { fecha: -1, createdAt: 1 } },
-              {
-                $group: {
-                  _id: '$fecha',
-                  horas: { $push: '$hora' },
-                  registrosEnElDia: { $sum: 1 },
-                },
-              },
-              { $sort: { _id: -1 } },
-              {
-                $project: {
-                  _id: 0,
-                  fecha: '$_id',
-                  horas: 1,
-                  registrosEnElDia: 1,
-                },
-              },
-            ],
-            resumen: [
-              { $match: { cedula } },
-              {
-                $group: {
-                  _id: null,
-                  totalRegistros: { $sum: 1 },
-                  ultimaFecha: { $max: '$fecha' },
-                  diasConAsistenciaSet: { $addToSet: '$fecha' },
-                },
-              },
-              {
-                $project: {
-                  _id: 0,
-                  totalRegistros: 1,
-                  ultimaFecha: 1,
-                  diasConAsistencia: { $size: '$diasConAsistenciaSet' },
-                },
-              },
-            ],
-            topCurso: cedulasCurso.length
-              ? [
-                  { $match: { cedula: { $in: cedulasCurso } } },
-                  {
-                    $group: {
-                      _id: '$cedula',
-                      diasSet: { $addToSet: '$fecha' }, // fechas únicas por estudiante
-                      total: { $sum: 1 },
-                    },
-                  },
-                  { $sort: { total: -1 } },
-                  { $limit: 1 },
-                  {
-                    $project: {
-                      _id: 0,
-                      referenciaCedula: '$_id',
-                      total: '$total', // <-- corregido
-                      diasTop: '$diasSet',
-                    },
-                  },
-                ]
-              : [{ $limit: 0 }],
-          },
-        },
-        {
-          $project: {
-            registros: 1,
-            resumen: {
-              $ifNull: [
-                { $arrayElemAt: ['$resumen', 0] },
-                { totalRegistros: 0, ultimaFecha: null, diasConAsistencia: 0 },
-              ],
-            },
-            topCurso: { $ifNull: ['$topCurso', []] },
-          },
-        },
-      ])
-      .exec();
-
-    // 5) Porcentaje de asistencia
-    const asistenciasActivas = Number(asistente.asistencias ?? 0);
-    const asistenciasInactivas = Number(asistente.asistenciasInactivas ?? 0);
-    const asistenciasAdicionales = Number(
-      asistente.asistenciasAdicionales ?? 0,
-    );
-    const totalAsistenciasAcumuladas =
-      asistenciasActivas + asistenciasInactivas + asistenciasAdicionales;
-
-    const diasActuales =
-      typeof curso.diasActuales === 'number' ? curso.diasActuales! : 0;
-    const porcentajeAsistencia =
-      diasActuales > 0
-        ? Math.min(
-            100,
-            Math.round((totalAsistenciasAcumuladas / diasActuales) * 100),
-          )
-        : 0;
-
-    // ===== 6) Fechas de referencia ajustadas a L-V y recorte a diasActuales =====
-    const diasAsistidosSet = new Set<string>(
-      (aggr?.registros ?? []).map((r: any) => String(r.fecha)),
-    );
-
-    const topInfo =
-      Array.isArray(aggr?.topCurso) && aggr.topCurso.length
-        ? aggr.topCurso[0]
-        : null;
-    const fechasReferenciaBrutas: string[] =
-      topInfo?.diasTop?.map((d: any) => String(d)) ?? [];
-
-    // Helper: es día laboral L-V (ISO 1..5) usando TZ Ecuador
-    const esLaboral = (ymd: string) => {
-      // evitar parseos raros: YYYY-MM-DD + TZ fija
-      const dt = new Date(`${ymd}T00:00:00-05:00`);
-      // getUTCDay(): 0..6 (Dom..Sáb); mapeo a ISO: 1..7
-      const iso = ((dt.getUTCDay() + 6) % 7) + 1;
-      return iso >= 1 && iso <= 5;
-    };
-
-    // Última fecha “válida” para no incluir futuros (usa la del resumen del alumno o hoy)
-    const ultimaFechaAlumno = aggr?.resumen?.ultimaFecha
-      ? String(aggr.resumen.ultimaFecha)
-      : null;
-    const hoyStr = new Date().toISOString().slice(0, 10);
-    const topeFecha = ultimaFechaAlumno ?? hoyStr;
-
-    // 1) filtra L-V, 2) no después de topeFecha, 3) ordena asc, 4) recorta a diasActuales
-    let fechasReferencia = fechasReferenciaBrutas
-      .filter((f) => esLaboral(f))
-      .filter((f) => f <= topeFecha)
-      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-
-    if (diasActuales > 0 && fechasReferencia.length > diasActuales) {
-      fechasReferencia = fechasReferencia.slice(0, diasActuales);
-    }
-
-    // Fallback si no hay top: usa los días asistidos propios (ya serán ≤ diasActuales)
-    const fechasEsperadas =
-      fechasReferencia.length > 0
-        ? fechasReferencia
-        : Array.from(diasAsistidosSet).sort();
-
-    // ===== 7) Faltas calculadas contra fechasEsperadas =====
-    const diasFaltados = fechasEsperadas.filter(
-      (d) => !diasAsistidosSet.has(d),
-    );
-    const totalDiasEsperados = fechasEsperadas.length;
-    const totalFaltas = diasFaltados.length;
-
-    // 8) Respuesta
-    return {
-      cedula,
-      asistente: {
-        id: String(asistente._id),
-        nombre: asistente.nombre ?? null,
-      },
-      curso,
-      resumen: {
-        ...(aggr?.resumen ?? {
-          totalRegistros: 0,
-          ultimaFecha: null,
-          diasConAsistencia: 0,
-        }),
-        porcentajeAsistencia,
-        totalAsistenciasAcumuladas,
-        totalDiasEsperados, // ⬅️ ahora debe coincidir con curso.diasActuales (28) si hay suficientes fechas L-V
-        totalFaltas,
-      },
-      faltas: {
-        referencia: topInfo?.referenciaCedula ?? null,
-        diasFaltados,
-      },
-      registros: aggr?.registros ?? [],
-    };
+  if (!asistente) {
+    throw new NotFoundException(`No existe asistente con cédula ${cedula}`);
   }
+
+  // 2) Resolver lista de cursos del asistente (compat: cursos[] + legacy curso)
+  const cursosAsistente: string[] = [
+    ...(Array.isArray(asistente.cursos) ? asistente.cursos : []),
+    ...(asistente.curso ? [asistente.curso] : []),
+  ]
+    .filter(Boolean)
+    .map((x) => String(x));
+
+  // 3) Determinar curso objetivo (prioridad: cursoId recibido > legacy > primero del array)
+  const cursoTarget =
+    cursoId && String(cursoId).trim()
+      ? String(cursoId).trim()
+      : asistente.curso
+        ? String(asistente.curso)
+        : cursosAsistente[0] ?? null;
+
+  if (!cursoTarget) {
+    throw new NotFoundException(`El asistente ${cedula} no tiene cursos asociados.`);
+  }
+
+  // 4) Validar pertenencia si vino cursoId explícito
+  if (cursoId) {
+    const pertenece = cursosAsistente.includes(String(cursoId));
+    if (!pertenece) {
+      throw new NotFoundException(`El asistente ${cedula} no pertenece al curso indicado.`);
+    }
+  }
+
+  // 5) Curso doc (si cursoTarget parece ObjectId, buscar por _id; si no, por nombre)
+  let cursoDoc: any = null;
+
+  if (Types.ObjectId.isValid(String(cursoTarget))) {
+    cursoDoc = await this.cursosModel.findById(cursoTarget).lean().exec();
+  } else {
+    cursoDoc = await this.cursosModel.findOne({ nombre: String(cursoTarget) }).lean().exec();
+  }
+
+  const curso: any = cursoDoc
+    ? {
+        id: String(cursoDoc._id),
+        nombre: cursoDoc.nombre ?? null,
+        estado: cursoDoc.estado ?? null,
+        diasActuales: typeof cursoDoc.diasActuales === 'number' ? cursoDoc.diasActuales : 0,
+        diasCurso: typeof cursoDoc.diasCurso === 'number' ? cursoDoc.diasCurso : 0,
+        updatedAt: cursoDoc.updatedAt ?? null,
+        imagen: cursoDoc.imagen ?? null,
+        fechasEsperadas: Array.isArray(cursoDoc.fechasEsperadas) ? cursoDoc.fechasEsperadas : [],
+      }
+    : {
+        id: Types.ObjectId.isValid(String(cursoTarget)) ? String(cursoTarget) : null,
+        nombre: Types.ObjectId.isValid(String(cursoTarget)) ? null : String(cursoTarget),
+        estado: null,
+        diasActuales: 0,
+        diasCurso: 0,
+        updatedAt: null,
+        imagen: null,
+        fechasEsperadas: [],
+      };
+
+  // ✅ Valor “real” del curso para filtrar asistencia (idealmente SIEMPRE ID)
+  const cursoMatchValue = cursoDoc?._id ? String(cursoDoc._id) : String(cursoTarget);
+
+  // 6) Obtener cédulas de compañeros del mismo curso (compat: curso legacy OR cursos[] contiene)
+  const cursoOr: any[] = [];
+  if (cursoDoc?._id) {
+    const idStr = String(cursoDoc._id);
+    cursoOr.push({ cursos: idStr });
+    cursoOr.push({ curso: idStr });
+
+    // por si algún registro guardó nombre en legacy
+    if (cursoDoc.nombre) cursoOr.push({ curso: cursoDoc.nombre });
+  } else {
+    // si solo tenemos nombre
+    cursoOr.push({ curso: String(cursoTarget) });
+    cursoOr.push({ cursos: String(cursoTarget) });
+  }
+
+  const asistentesCurso = await this.asistentesModel
+    .find({ $or: cursoOr }, { cedula: 1 })
+    .lean()
+    .exec();
+
+  const cedulasCurso: string[] = (asistentesCurso ?? [])
+    .map((a: any) => a.cedula)
+    .filter((x: any) => typeof x === 'string' && x.length);
+
+  // ✅ Filtro por curso para la asistencia del alumno
+  const matchAsistenciaAlumno: any = {
+    cedula,
+    curso: cursoMatchValue,
+  };
+
+  // 7) Agregación: registros/resumen del alumno + top del curso (todo filtrado por curso)
+  const [aggr] = await this.asistenciaModel
+    .aggregate([
+      {
+        $facet: {
+          registros: [
+            { $match: matchAsistenciaAlumno },
+            { $sort: { fecha: -1, createdAt: 1 } },
+            {
+              $group: {
+                _id: '$fecha',
+                horas: { $push: '$hora' },
+                registrosEnElDia: { $sum: 1 },
+              },
+            },
+            { $sort: { _id: -1 } },
+            {
+              $project: {
+                _id: 0,
+                fecha: '$_id',
+                horas: 1,
+                registrosEnElDia: 1,
+              },
+            },
+          ],
+          resumen: [
+            { $match: matchAsistenciaAlumno },
+            {
+              $group: {
+                _id: null,
+                totalRegistros: { $sum: 1 },
+                ultimaFecha: { $max: '$fecha' },
+                diasConAsistenciaSet: { $addToSet: '$fecha' },
+              },
+            },
+            {
+              $project: {
+                _id: 0,
+                totalRegistros: 1,
+                ultimaFecha: 1,
+                diasConAsistencia: { $size: '$diasConAsistenciaSet' },
+              },
+            },
+          ],
+          topCurso: cedulasCurso.length
+            ? [
+                {
+                  $match: {
+                    cedula: { $in: cedulasCurso },
+                    curso: cursoMatchValue,
+                  },
+                },
+                {
+                  $group: {
+                    _id: '$cedula',
+                    diasSet: { $addToSet: '$fecha' },
+                    total: { $sum: 1 },
+                  },
+                },
+                { $sort: { total: -1 } },
+                { $limit: 1 },
+                {
+                  $project: {
+                    _id: 0,
+                    referenciaCedula: '$_id',
+                    total: 1,
+                    diasTop: '$diasSet',
+                  },
+                },
+              ]
+            : [{ $limit: 0 }],
+        },
+      },
+      {
+        $project: {
+          registros: 1,
+          resumen: {
+            $ifNull: [
+              { $arrayElemAt: ['$resumen', 0] },
+              { totalRegistros: 0, ultimaFecha: null, diasConAsistencia: 0 },
+            ],
+          },
+          topCurso: { $ifNull: ['$topCurso', []] },
+        },
+      },
+    ])
+    .exec();
+
+  // 8) Porcentaje (✅ por curso)
+  const totalAsistenciasAcumuladas = Number(aggr?.resumen?.totalRegistros ?? 0);
+
+  const diasActuales = Number(curso.diasActuales ?? 0);
+  const porcentajeAsistencia =
+    diasActuales > 0
+      ? Math.min(100, Math.round((totalAsistenciasAcumuladas / diasActuales) * 100))
+      : 0;
+
+  // 9) ✅ FALTAS: comparar contra "todos los días reales del curso"
+  //    Regla: "Un día cuenta como esperado si al menos alguien del curso registró asistencia ese día"
+  //    Así, evitamos depender del 'topCurso' o de un solo alumno.
+  const diasCursoAgg = await this.asistenciaModel
+    .aggregate([
+      { $match: { curso: cursoMatchValue } },
+      { $group: { _id: '$fecha' } },
+      { $sort: { _id: 1 } },
+    ])
+    .exec();
+
+  const fechasCurso: string[] = (diasCursoAgg ?? []).map((d: any) => String(d._id));
+
+  const diasAsistidosSet = new Set<string>((aggr?.registros ?? []).map((r: any) => String(r.fecha)));
+
+  const diasFaltados = fechasCurso.filter((fecha) => !diasAsistidosSet.has(fecha));
+  const totalDiasEsperados = fechasCurso.length;
+  const totalFaltas = diasFaltados.length;
+
+  // Info top (opcional)
+  const topInfo =
+    Array.isArray(aggr?.topCurso) && aggr.topCurso.length ? aggr.topCurso[0] : null;
+
+  // 10) Respuesta
+  return {
+    cedula,
+    cursoId: cursoDoc?._id
+      ? String(cursoDoc._id)
+      : Types.ObjectId.isValid(String(cursoTarget))
+        ? String(cursoTarget)
+        : null,
+    asistente: {
+      id: String(asistente._id),
+      nombre: asistente.nombre ?? null,
+    },
+    curso,
+    resumen: {
+      ...(aggr?.resumen ?? {
+        totalRegistros: 0,
+        ultimaFecha: null,
+        diasConAsistencia: 0,
+      }),
+      porcentajeAsistencia,
+      totalAsistenciasAcumuladas,
+      totalDiasEsperados,
+      totalFaltas,
+    },
+    faltas: {
+      referencia: topInfo?.referenciaCedula ?? null,
+      diasFaltados,
+      fechasEsperadas: fechasCurso,
+      fuente: 'union_todos_en_curso',
+    },
+    registros: aggr?.registros ?? [],
+  };
+}
+
 
   /* 
 async pdfPorCedula(cedula: string): Promise<Buffer> {
@@ -1062,66 +1134,80 @@ doc.text(`${porcentaje}%`, barX + barW - 60, barY - 16, { width: 60, align: 'rig
       y += rowH;
     }
   }
+async pdfPorCedula(
+  cedula: string,
+  cursoId?: string,
+): Promise<{ buffer: Buffer; filename: string }> {
+  const BACKGROUND_URL =
+    'https://corpfourier.s3.us-east-2.amazonaws.com/marca_agua/marca-reportes.png';
 
-  async pdfPorCedula(
-    cedula: string,
-  ): Promise<{ buffer: Buffer; filename: string }> {
-    const BACKGROUND_URL =
-      'https://corpfourier.s3.us-east-2.amazonaws.com/marca_agua/marca-reportes.png';
-    const data: any = await this.reportePorCedulaTotal(cedula);
-    if (!data) throw new NotFoundException('Sin datos');
+  // ✅ IMPORTANTE: pasar cursoId al reporte
+  const data: any = await this.reportePorCedulaTotal(cedula, cursoId);
+  if (!data) throw new NotFoundException('Sin datos');
 
-    const filename = `asistencia_${cedula}.pdf`;
-    const bg = BACKGROUND_URL
-      ? await this.fetchImageBuffer(BACKGROUND_URL)
-      : null;
+  // ✅ filename incluye curso para evitar confusión
+  const safeCurso = (data?.curso?.nombre ?? 'curso')
+    .toString()
+    .trim()
+    .replace(/[^a-z0-9]+/gi, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase();
 
-    const doc = new PDFDocument({ size: 'A4', margin: 40 });
-    const chunks: Buffer[] = [];
+  const filename = `asistencia_${cedula}_${safeCurso}.pdf`;
 
-    const HEADER_HEIGHT = 130;
-    const PADDING_BELOW_HEADER = 6;
+  const bg = BACKGROUND_URL
+    ? await this.fetchImageBuffer(BACKGROUND_URL)
+    : null;
 
-    doc.on('pageAdded', () => this.drawBackground(doc, bg));
+  const doc = new PDFDocument({ size: 'A4', margin: 40 });
+  const chunks: Buffer[] = [];
 
-    const result = await new Promise<Buffer>((resolve, reject) => {
-      doc.on('data', (c) => chunks.push(c));
-      doc.on('end', () => resolve(Buffer.concat(chunks)));
-      doc.on('error', reject);
+  const HEADER_HEIGHT = 130;
+  const PADDING_BELOW_HEADER = 6;
 
-      // Fondo + encabezado
-      this.drawBackground(doc, bg);
-      this.drawHeaderBlock(doc, data as any);
+  doc.on('pageAdded', () => this.drawBackground(doc, bg));
 
-      // Posicionar cursor
-      doc.x = doc.page.margins.left;
-      doc.y = doc.page.margins.top + HEADER_HEIGHT + PADDING_BELOW_HEADER;
+  const result = await new Promise<Buffer>((resolve, reject) => {
+    doc.on('data', (c) => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
 
-      // ===== TÍTULO TABLA =====
-      doc
-        .font('Helvetica-Bold')
-        .fontSize(12)
-        .fillColor('#0f172a')
-        .text('Registros por fecha');
-      doc.moveDown(0.2);
+    // Fondo + encabezado
+    this.drawBackground(doc, bg);
+    this.drawHeaderBlock(doc, data as any);
 
-      // ===== TABLA COMBINADA =====
-      const startY = doc.y + 20;
-      const combined = this.buildCombinedRows(data);
-      this.drawTableCombined(doc, combined, { y: startY, marginX: 40 });
+    // Posicionar cursor
+    doc.x = doc.page.margins.left;
+    doc.y = doc.page.margins.top + HEADER_HEIGHT + PADDING_BELOW_HEADER;
 
-      // ===== FOOTER =====
-      doc.moveDown(1);
-      doc.font('Helvetica').fontSize(9).fillColor('#9aa0ae');
-      doc.text(`Generado: ${this.formatDateTime(new Date().toISOString())}`, {
-        align: 'right',
-      });
+    // ===== TÍTULO TABLA =====
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(12)
+      .fillColor('#0f172a')
+      .text('Registros por fecha');
+    doc.moveDown(0.2);
 
-      doc.end();
+    // ===== TABLA COMBINADA =====
+    const startY = doc.y + 20;
+
+    // (si tu buildCombinedRows ya usa data.faltas/fechasEsperadas, listo)
+    const combined = this.buildCombinedRows(data);
+
+    this.drawTableCombined(doc, combined, { y: startY, marginX: 40 });
+
+    // ===== FOOTER =====
+    doc.moveDown(1);
+    doc.font('Helvetica').fontSize(9).fillColor('#9aa0ae');
+    doc.text(`Generado: ${this.formatDateTime(new Date().toISOString())}`, {
+      align: 'right',
     });
 
-    return { buffer: result, filename };
-  }
+    doc.end();
+  });
+
+  return { buffer: result, filename };
+}
 
   /* ======================== HELPERS ======================== */
 
