@@ -444,76 +444,113 @@ async generateAsistenciaPorCedula(cedula: string) {
     return true;
   } */
 
-  async registrarAsistencia(cedula: string, cursoId: string): Promise<string> {
-    try {
-      // ✅ Hora Ecuador (consistente)
-      const nowEc = new Date(Date.now() - 5 * 60 * 60 * 1000);
-      const fechaHoy = nowEc.toISOString().slice(0, 10); // YYYY-MM-DD
-      const horaActual = nowEc.toTimeString().split(' ')[0]; // HH:mm:ss
+ async registrarAsistencia(cedula: string, cursoId: string): Promise<string> {
+  console.log('[ASISTENCIA][START]', { cedula, cursoId });
 
-      // 1) Validar que el asistente exista y pertenezca al curso (multi-curso)
-      const asistente = await this.asistentesModel
-        .findOne({
-          cedula,
-          $or: [{ cursos: cursoId }, { curso: cursoId }],
-        })
-        .lean()
-        .exec();
+  try {
+    // 0) Hora Ecuador
+    const nowEc = new Date();
 
-      if (!asistente) return 'El usuario no está registrado en el curso.';
+const fechaHoy = nowEc.toLocaleDateString('en-CA'); // YYYY-MM-DD
+const horaActual = nowEc.toTimeString().slice(0, 8);
 
-      // 2) Buscar registros del día PERO del mismo curso
-      const registrosHoy = await this.asistenciaModel
-        .find({ cedula, curso: cursoId, fecha: fechaHoy })
-        .sort({ createdAt: 1 })
-        .lean()
-        .exec();
 
-      const ultimoRegistro: any = registrosHoy.length
-        ? registrosHoy[registrosHoy.length - 1]
-        : null;
+    console.log('[ASISTENCIA][0][FECHA]', { fechaHoy, horaActual });
 
-      // 3) Cooldown 30 minutos (por curso)
-      if (ultimoRegistro) {
-        const diffMin =
-          (nowEc.getTime() - new Date(ultimoRegistro.createdAt).getTime()) /
-          (1000 * 60);
-
-        if (diffMin < 30) return 'espere';
-      }
-
-      // 4) Insertar asistencia
-      // ✅ ideal: tener índice único {cedula, curso, fecha} para impedir duplicados
-      await this.asistenciaModel.create({
+    // 1) Validar asistente
+    console.log('[ASISTENCIA][1][BUSCAR_ASISTENTE]');
+    const asistente = await this.asistentesModel
+      .findOne({
         cedula,
-        curso: cursoId,
-        fecha: fechaHoy,
-        hora: horaActual,
-        asistenteId: asistente._id.toString(),
-        // fechaEcuador ya la setea tu schema
+        $or: [{ cursos: cursoId }, { curso: cursoId }],
+      })
+      .lean()
+      .exec();
+
+    if (!asistente) {
+      console.warn('[ASISTENCIA][1][NO_EXISTE]');
+      return 'El usuario no está registrado en el curso.';
+    }
+
+    console.log('[ASISTENCIA][1][ASISTENTE_OK]', {
+      asistenteId: asistente._id,
+      negocio: asistente.negocio ?? null,
+    });
+
+    // 2) Buscar registros del día
+    console.log('[ASISTENCIA][2][BUSCAR_REGISTROS_HOY]');
+    const registrosHoy = await this.asistenciaModel
+      .find({ cedula, curso: cursoId, fecha: fechaHoy })
+      .sort({ createdAt: 1 })
+      .lean()
+      .exec();
+ 
+    console.log('[ASISTENCIA][2][REGISTROS_HOY]', {
+      total: registrosHoy.length,
+    });
+
+    const ultimoRegistro:any = registrosHoy.length
+      ? registrosHoy[registrosHoy.length - 1]
+      : null;
+    console.log(ultimoRegistro); 
+    // 3) Cooldown 30 min
+    if (ultimoRegistro) {
+      const diffMin =
+        (nowEc.getTime() - new Date(ultimoRegistro.createdAt).getTime()) /
+        (1000 * 60);
+
+      console.log('[ASISTENCIA][3][COOLDOWN]', {
+        diffMin,
+        ultimoRegistro: ultimoRegistro.createdAt,
       });
 
-      // 5) ✅ Actualizar días del curso (recomendado con campo dedicado)
-      // Si todavía no lo tienes, te dejo la opción A y la opción B abajo.
-      await this.incrementarDiasActualesSiCorresponde(cursoId, fechaHoy);
-
-      // 6) 🚫 Ya NO incrementar asistencias en Asistente
-      // (todo se calcula desde asistenciaModel)
-
-      // 7) Bitrix: solo si fue la primera del día para ese curso
-      if (registrosHoy.length === 0 && asistente.negocio) {
-        this.notificarBitrixEntradaRegistrada(asistente.negocio);
+      if (diffMin < 30) {
+        console.warn('[ASISTENCIA][3][COOLDOWN_BLOQUEADO]');
+        return 'espere';
       }
-
-      return 'exito';
-    } catch (error) {
-      console.error('Error al registrar la asistencia:', error);
-      throw new InternalServerErrorException(
-        'Error al registrar la asistencia',
-        error.message,
-      );
+    } else {
+      console.log('[ASISTENCIA][3][SIN_REGISTRO_PREVIO]');
     }
+
+    // 4) Insertar asistencia
+    console.log('[ASISTENCIA][4][CREANDO_ASISTENCIA]');
+    await this.asistenciaModel.create({
+      cedula,
+      curso: cursoId,
+      fecha: fechaHoy,
+      hora: horaActual,
+      asistenteId: asistente._id.toString(),
+    });
+
+    console.log('[ASISTENCIA][4][ASISTENCIA_OK]');
+
+    // 5) Incrementar días del curso
+    console.log('[ASISTENCIA][5][INCREMENTAR_DIAS]');
+    await this.incrementarDiasActualesSiCorresponde(cursoId, fechaHoy);
+    console.log('[ASISTENCIA][5][DIAS_OK]');
+
+    // 6) Bitrix solo primera del día
+    if (registrosHoy.length === 0 && asistente.negocio) {
+      console.log('[ASISTENCIA][6][BITRIX_NOTIFICAR]');
+      this.notificarBitrixEntradaRegistrada(asistente.negocio);
+    } else {
+      console.log('[ASISTENCIA][6][BITRIX_SKIP]', {
+        registrosHoy: registrosHoy.length,
+        negocio: !!asistente.negocio,
+      });
+    }
+
+    console.log('[ASISTENCIA][END][EXITO]');
+    return 'exito';
+  } catch (error) {
+    console.error('[ASISTENCIA][ERROR_FATAL]', error);
+    throw new InternalServerErrorException(
+      'Error al registrar la asistencia',
+      error.message,
+    );
   }
+}
+
 
   // BITRIX_WEBHOOK_URL=https://nicpreu.bitrix24.es/rest/1/XXXX/crm.deal.update
   private readonly BITRIX_DEAL_UPDATE_URL =
