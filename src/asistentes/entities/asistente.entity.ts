@@ -1,6 +1,7 @@
 // asistentes.schema.ts
 import { HydratedDocument } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { FastifyLoader } from '@nestjs/serve-static';
 
 export type AsistentesDocument = HydratedDocument<Asistentes>;
 
@@ -104,7 +105,7 @@ export class Asistentes {
 
   @Prop({ type: Date, default: Date.now }) createdAt: Date;
   @Prop({ type: Date, default: Date.now }) createdAtEcuador: Date;
-  @Prop({ type: String, ref: 'Curso', required: true }) curso: string;
+  @Prop({ type: String, ref: 'Curso', required: false }) curso?: string;
   @Prop({ type: [{ type: String, ref: 'Curso' }], default: [] })
   cursos: string[];
   @Prop({ type: Boolean, default: true }) estado: boolean;
