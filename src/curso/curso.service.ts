@@ -68,7 +68,9 @@ export class CursoService {
             setDefaultsOnInsert: true,
           },
         )
+        .lean()
         .exec();
+    
 
       return doc;
     } catch (error) {

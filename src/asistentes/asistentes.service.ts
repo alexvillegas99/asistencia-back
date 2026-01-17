@@ -674,16 +674,13 @@ export class AsistentesService {
 
   async generateQrForAsistente(asistente: any, res: Response): Promise<void> {
     try {
-      const qrData = `${asistente.cedula},${asistente.nombre},${asistente.curso},${asistente.createdAtEcuador}`;
+      const qrData = `${asistente.cedula},${asistente.nombre},${asistente.createdAtEcuador}`;
 
-      // Obtener la información del curso, incluyendo su imagen
-      const curso = await this.cursoService.findOne(asistente.curso);
-      if (!curso || !curso.imagen) {
-        curso.imagen = this.imagenDefecto;
-      }
-
+    
+       const imagenDefecto= this.imagenDefecto;
+      
       // Cargar la imagen del curso desde la URL proporcionada
-      const backgroundImage = await loadImage(curso.imagen);
+      const backgroundImage = await loadImage(imagenDefecto);
 
       // Crear el canvas para el QR
       const qrCanvas = createCanvas(700, 700); // Tamaño inicial del QR
@@ -734,16 +731,13 @@ export class AsistentesService {
     res: Response,
   ): Promise<void> {
     try {
-      const qrData = `${asistente.cedula},${asistente.nombre},${asistente.curso},${asistente.createdAtEcuador}`;
+      const qrData = `${asistente.cedula},${asistente.nombre},${asistente.createdAtEcuador}`;
 
       // Obtener la información del curso, incluyendo su imagen
-      const curso = await this.cursoService.findOne(asistente.curso);
-      if (!curso || !curso.imagen) {
-        curso.imagen = this.imagenDefecto;
-      }
+       const imagenDefecto= this.imagenDefecto;
 
       // Cargar la imagen del curso desde la URL proporcionada
-      const backgroundImage = await loadImage(curso.imagen);
+      const backgroundImage = await loadImage(imagenDefecto);
 
       // Crear el canvas para el QR
       const qrCanvas = createCanvas(700, 700);
@@ -832,6 +826,7 @@ async addAsistente(arg0: {
   telefono?: string;
   correo?: string;
 }) {
+  console.log(arg0);
   try {
     // 1) Normalizar inputs (IGUAL)
     const nombre = (arg0.nombre || '').trim();
@@ -850,14 +845,14 @@ async addAsistente(arg0: {
       .map(c => c.trim())
       .filter(Boolean)
       .map(c => c.replace(/ /g, '_'));
-
+    console.log('Cursos a procesar:', cursosNombres);
     // 3) Buscar o crear cursos (ANTES era 1, ahora N)
     const cursos = await Promise.all(
       cursosNombres.map(c => this.cursoService.buscarOCrear(c)),
     );
-
+    console.log('Cursos encontrados/creados:', cursos);
     const cursosIds = cursos.map(c => c._id.toString());
-
+    console.log('IDs de cursos:', cursosIds);
     // mantiene tu lógica actual
     const diasAsistenciasAdicionales = cursos[0]?.diasActuales || 0;
 
@@ -884,8 +879,10 @@ async addAsistente(arg0: {
       ...(Array.isArray(existente.cursos) ? existente.cursos : []),
       ...(existente.curso ? [existente.curso] : []), // legacy
     ]);
+      console.log('Cursos actuales del asistente:', Array.from(cursosActuales));
 
     const nuevosCursos = cursosIds.filter(id => !cursosActuales.has(id));
+    console.log('Nuevos cursos a agregar:', nuevosCursos);
 
     // si TODOS los cursos ya existen → mismo comportamiento
     if (!nuevosCursos.length) {
@@ -902,7 +899,7 @@ async addAsistente(arg0: {
         ...(correo ? { correo } : {}),
       },
     };
-
+    console.log('Update a aplicar:', update);
     // legacy cleanup (IGUAL)
     if (existente.curso) {
       update.$unset = { curso: '' };

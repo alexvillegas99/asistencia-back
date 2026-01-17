@@ -136,8 +136,7 @@ export class AsistentesController {
     @Res() res: Response,
   ) {
     let { nombre, cedula, curso, negocio, telefono, correo } = query;
-    console.log(nombre);
-    console.log(query);
+ 
     // Validar los parámetros requeridos
     if (!nombre || !cedula || !curso || !negocio) {
       throw new HttpException(
