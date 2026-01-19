@@ -3,7 +3,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 
 export type AsistenciaDocument = HydratedDocument<Asistencia>;
 
-@Schema({ timestamps: true ,})
+@Schema({ timestamps: true , strict: false})
 export class Asistencia {
   @Prop({ type: String, required: true })
   cedula: string;

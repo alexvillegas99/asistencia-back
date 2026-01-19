@@ -38,6 +38,17 @@ export class AsistenciasController {
   async findAll(@Query('idCurso') idCurso: string) {
     return this.asistenciasService.generateAsistenciaReportDebug(idCurso);
   }
+   @Get('v2')
+  @ApiQuery({
+    name: 'idCurso',
+    required: true,
+    description: 'El ID del curso para generar el reporte de asistencias',
+    example: '64234c3bdcfa0f3f34097e78',
+  })
+  async findAllV2(@Query('idCurso') idCurso: string) {
+    
+    return this.asistenciasService.generateAsistenciaReport(idCurso);
+  }
 
   @Post('registrar')
   @ApiBody({
@@ -137,5 +148,16 @@ async pdfPorCedula(
     disposition: `attachment; filename="${filename}"`,
   });
 }
-
+@Post('justificar-falta')
+  async justificarFalta(
+    @Body()
+    body: {
+      cedula: string;
+      cursoId: string;
+      fecha: string;
+      usuario: string;
+    },
+  ): Promise<{ ok: boolean }> {
+    return this.asistenciasService.justificarFalta(body);
+  }
 }

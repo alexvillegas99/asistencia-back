@@ -175,6 +175,90 @@ async generateAsistenciaReportDebug(cursoId: string) {
 }
 
 
+
+ async generateAsistenciaReport(cursoId: string) {
+    try {
+      // 1. Obtener asistentes del curso
+      const asistentes = await this.asistentesModel
+        .find({ $or: [{ cursos: cursoId }, { curso: cursoId }] })
+        .exec();
+
+      if (!asistentes.length) {
+        throw new NotFoundException(
+          'No se encontraron asistentes para el curso',
+        );
+      }
+
+      // 2. IDs de asistentes
+      const asistentesIds = asistentes.map((a) => a._id);
+
+      // 3. Buscar TODAS las asistencias de esos asistentes (todos los cursos)
+      const asistencias = await this.asistenciaModel
+        .find({
+          asistenteId: { $in: asistentesIds },
+        })
+        .sort({ fecha: 1, hora: 1 })
+        .exec();
+
+      if (!asistencias.length) {
+        throw new NotFoundException('No se encontraron asistencias');
+      }
+
+      // 4. Mapa asistentes
+      const asistentesMap = new Map(
+        asistentes.map((a) => [a._id.toString(), a]),
+      );
+
+      // 5. Agrupar: fecha → asistente + curso → TODAS las marcas
+      const agrupadas = asistencias.reduce((acc, asistencia) => {
+        const fecha = asistencia.fecha.toString();
+        const asistenteId = asistencia.asistenteId.toString();
+        const curso = (asistencia.curso || '').toString();
+        const key = `${asistenteId}|${curso}`;
+
+        if (!acc[fecha]) acc[fecha] = {};
+
+        if (!acc[fecha][key]) {
+          acc[fecha][key] = {
+            cedula:
+              asistentesMap.get(asistenteId)?.cedula ??
+              asistencia.cedula ??
+              null,
+            nombre: asistentesMap.get(asistenteId)?.nombre ?? null,
+            curso,
+            marcas: [],
+          };
+        }
+
+        acc[fecha][key].marcas.push(asistencia.hora);
+
+        return acc;
+      }, {} as Record<string, Record<string, any>>);
+
+      // 6. Formato final
+      const resultado = Object.entries(agrupadas).map(
+        ([fecha, registros]) => ({
+          fecha,
+          asistentes: Object.values(registros).map((r: any) => ({
+            ...r,
+            entrada: r.marcas[0] || null,
+            salida: r.marcas[r.marcas.length - 1] || null,
+            intermedias: r.marcas.slice(1, -1),
+            totalMarcas: r.marcas.length,
+          })),
+        }),
+      );
+
+      return resultado;
+    } catch (error) {
+      console.error('[ASISTENCIA][REPORT][ERROR]', error);
+      throw new InternalServerErrorException(
+        'Error al generar el reporte de asistencias',
+        error.message,
+      );
+    }
+  }
+
   
 async generateAsistenciaPorCedula(cedula: string) {
   try {
@@ -1446,4 +1530,82 @@ async pdfPorCedula(
       doc.text('Sin registros.', left + 8, y + 8, { width: usableWidth - 16 });
     }
   }
+
+  async justificarFalta(dto: any): Promise<{ ok: boolean }> {
+  const { cedula, cursoId, fecha, usuario } = dto;
+
+  if (!cedula || !cursoId || !fecha || !usuario) {
+    throw new ForbiddenException('Datos incompletos para justificar la falta');
+  }
+
+  // 1️⃣ Validar asistente
+  const asistente = await this.asistentesModel
+    .findOne({
+      cedula,
+      $or: [{ cursos: cursoId }, { curso: cursoId }],
+    })
+    .lean()
+    .exec();
+
+  if (!asistente) {
+    throw new NotFoundException('El asistente no pertenece al curso');
+  }
+
+  // 2️⃣ Verificar si ya existe registro ese día
+  const existe = await this.asistenciaModel.findOne({
+    cedula,
+    curso: cursoId,
+    fecha,
+  });
+
+  // ⏱️ fecha/hora real de la justificación
+  const justificacionAt = new Date();
+const justificadaAt = new Date();
+
+  if (existe) {
+    await this.asistenciaModel.updateOne(
+      { _id: existe._id },
+      {
+        $set: {
+          justificada: true,
+          observacion: 'FALTA JUSTIFICADA',
+          justificadaPor: usuario,
+          justificadaAt,
+          tipo: 'JUSTIFICACION',
+
+          // 🔥 CLAVE: actualizamos updatedAt
+          updatedAt: justificacionAt,
+        },
+      },
+    );
+
+    return { ok: true };
+  }
+
+  // 3️⃣ Crear registro nuevo con createdAt = momento de justificación
+  await this.asistenciaModel.create({
+    cedula,
+    curso: cursoId,
+    fecha,                // día faltado
+    hora: '00:00:00',
+    asistenteId: asistente._id.toString(),
+
+    // contexto Ecuador (opcional)
+    fechaEcuador: new Date(`${fecha}T00:00:00-05:00`),
+
+    // 🔥 timestamps manuales
+    createdAt: justificacionAt,
+    updatedAt: justificacionAt,
+
+    // datos de negocio
+    justificada: true,
+    observacion: 'FALTA JUSTIFICADA',
+    justificadaPor: usuario,
+    justificadaAt,
+    tipo: 'JUSTIFICACION',
+  });
+
+  return { ok: true };
+}
+
 }

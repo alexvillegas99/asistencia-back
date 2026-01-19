@@ -441,5 +441,10 @@ export class AsistentesController {
   async actualizarCursos(@Body() body: { cedula: string; cursos: string[] }) {
     return await this.asistentesService.actualizarCursosString(body);
   }
+  @Get('info/cedula/:cedula')
+  
+  async getInfoPorCedula(@Param('cedula') cedula: string) {
+    return this.asistentesService.getInfoPorCedula(cedula);
+  }
 }
  
