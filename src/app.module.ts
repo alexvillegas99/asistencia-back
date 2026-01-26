@@ -18,6 +18,7 @@ import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { MoodleModule } from './moodle/moodle.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { SkoolModule } from './modules/skool/skool.module';
+import { RatingsModule } from './ratings/ratings.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
@@ -34,6 +35,7 @@ import { SkoolModule } from './modules/skool/skool.module';
     NotificacionesModule,
     MoodleModule,
     SkoolModule,
+    RatingsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
