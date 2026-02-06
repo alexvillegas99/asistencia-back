@@ -39,10 +39,11 @@ export class AsistentesController {
     return await this.asistentesService.createBatch(createAsistentesDto);
   }
 
-  @Get()
-  findAll(@Query('cursoId') cursoId: string) {
-    return this.asistentesService.findAll(cursoId);
-  }
+ @Get()
+   async findAll(@Query('cursoId') cursoId?: string) {
+  return  await this.asistentesService.findAll(cursoId);
+}
+
 
   @Get('global/busqueda')
   findAllGlobal(@Query('param') param: string) {
@@ -132,11 +133,22 @@ export class AsistentesController {
       negocio: string;
       telefono?: string;
       correo?: string;
+      categoria?: string;
+      periodo?: string;
     },
     @Res() res: Response,
   ) {
-    let { nombre, cedula, curso, negocio, telefono, correo } = query;
- 
+    let {
+      nombre,
+      cedula,
+      curso,
+      negocio,
+      telefono,
+      correo,
+      categoria,
+      periodo,
+    } = query;
+    console.log(query);
     // Validar los parámetros requeridos
     if (!nombre || !cedula || !curso || !negocio) {
       throw new HttpException(
@@ -148,6 +160,8 @@ export class AsistentesController {
     negocio = negocio.trim();
     nombre = nombre.trim();
     cedula = cedula.trim();
+    categoria = categoria?.trim();
+    periodo = periodo?.trim();
 
     if (telefono) telefono = telefono.trim();
     if (correo) correo = correo.trim();
@@ -161,6 +175,8 @@ export class AsistentesController {
         negocio,
         telefono,
         correo,
+        periodo,
+        categoria,
       });
       await this.asistentesService.generateQrForAsistente(result, res);
       // Responde con un mensaje claro
@@ -417,7 +433,6 @@ export class AsistentesController {
     description:
       'Busca al asistente por cédula y reemplaza completamente el array `cursos`. Opcionalmente elimina el campo legacy `curso`.',
   })
-
   @ApiResponse({
     status: 200,
     description: 'Cursos actualizados correctamente',
@@ -425,10 +440,7 @@ export class AsistentesController {
       example: {
         ok: true,
         cedula: '1751865914',
-        cursos: [
-          '68b5b9befe87904270c107ba',
-          '68b5ba02fe87904270c107bb',
-        ],
+        cursos: ['68b5b9befe87904270c107ba', '68b5ba02fe87904270c107bb'],
       },
     },
   })
@@ -442,9 +454,12 @@ export class AsistentesController {
     return await this.asistentesService.actualizarCursosString(body);
   }
   @Get('info/cedula/:cedula')
-  
   async getInfoPorCedula(@Param('cedula') cedula: string) {
     return this.asistentesService.getInfoPorCedula(cedula);
   }
+
+    @Get('buscar/cursos/:cedula')
+  async getCursosPorCedula(@Param('cedula') cedula: string) {
+    return this.asistentesService.getCursosPorCedula(cedula);
+  }
 }
- 

@@ -113,7 +113,8 @@ export class Asistentes {
   @Prop({ type: Number, default: 0 }) inasistencias: number;
   @Prop({ type: Number, default: 0 }) asistenciasInactivas: number;
   @Prop({ type: Number, default: 0 }) asistenciasAdicionales: number;
- 
+  @Prop({ type: String }) categoria?: number;
+  @Prop({ type: String }) periodo?: number;
   // ✅ NUEVO CAMPO con default para nuevos documentos
   @Prop({
     // puedes modelarlo como objeto plano…

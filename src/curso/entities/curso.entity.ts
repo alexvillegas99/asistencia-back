@@ -25,7 +25,14 @@ export class Curso {
   @Prop({ type: Number, required: true, default: 0 })
   diasActuales: number;
 
-  
+  @Prop({ type: String, required: false })
+  categoria?: string;
+
+  @Prop({ type: [Object], default: [] })
+  horario?: Record<string, any>[]; 
+
+  @Prop({ type: String, required: false })
+  periodo?: string;
 }
 
 export const CursoSchema = SchemaFactory.createForClass(Curso);

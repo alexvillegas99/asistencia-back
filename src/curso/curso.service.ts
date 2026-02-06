@@ -12,8 +12,6 @@ import { AmazonS3Service } from 'src/amazon-s3/amazon-s3.service';
 
 @Injectable()
 export class CursoService {
-
- 
   reseteDatos(_id: string) {
     console.log(_id);
     const data = this.cursoModel
@@ -43,39 +41,41 @@ export class CursoService {
     return new Date(hoyCeroEC.getTime() - 24 * 60 * 60 * 1000);
   }
 
-  async buscarOCrear(curso: string) {
+  async buscarOCrear(curso: string, categoria?: string) {
     try {
+      const set: any = {
+        updatedAt: new Date(),
+      };
+
+      if (categoria !== undefined) {
+        set.categoria = categoria;
+      }
+
+    
       const doc = await this.cursoModel
         .findOneAndUpdate(
-          { nombre: curso },
+          { nombre: curso }, // 🔑 búsqueda SOLO por nombre
           {
-            // Solo si NO existe: crear con estas propiedades
+            $set: set, // solo actualiza lo que venga
             $setOnInsert: {
               nombre: curso,
-              // si quieres forzar también createdAt inicial:
               createdAt: new Date(),
-              // clave: setear updatedAt a AYER para que tu lógica de +1 dispare hoy
-              updatedAt: this.ayerEC(),
-              // si manejas este campo:
               diasActuales: 0,
             },
           },
           {
             upsert: true,
             new: true,
-            // desactiva timestamps SOLO en esta operación para respetar nuestro updatedAt
             timestamps: false,
-            setDefaultsOnInsert: true,
           },
         )
         .lean()
         .exec();
-    
 
       return doc;
     } catch (error) {
       throw new InternalServerErrorException(
-        'Error al crear el curso',
+        'Error al crear o actualizar el curso',
         error.message,
       );
     }
@@ -84,7 +84,7 @@ export class CursoService {
   constructor(
     @InjectModel(CursoModelName)
     private readonly cursoModel: Model<CursoDocument>,
-    private readonly s3Service: AmazonS3Service
+    private readonly s3Service: AmazonS3Service,
   ) {}
 
   async create(createCursoDto: CreateCursoDto): Promise<CursoDocument> {
@@ -99,62 +99,62 @@ export class CursoService {
     }
   }
 
-async findAll(): Promise<any[]> {
-  try {
-    return this.cursoModel.aggregate([
-      {
-        $addFields: {
-          idAsString: { $toString: '$_id' },
+  async findAll(): Promise<any[]> {
+    try {
+      return this.cursoModel.aggregate([
+        {
+          $addFields: {
+            idAsString: { $toString: '$_id' },
+          },
         },
-      },
-      {
-        $lookup: {
-          from: 'asistentes',
-          let: { cursoIdStr: '$idAsString' },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $or: [
-                    // legacy: curso == id string
-                    { $eq: ['$curso', '$$cursoIdStr'] },
+        {
+          $lookup: {
+            from: 'asistentes',
+            let: { cursoIdStr: '$idAsString' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $or: [
+                      // legacy: curso == id string
+                      { $eq: ['$curso', '$$cursoIdStr'] },
 
-                    // nuevo: cursos array contiene id string
-                    {
-                      $and: [
-                        { $isArray: '$cursos' },
-                        { $in: ['$$cursoIdStr', '$cursos'] },
-                      ],
-                    },
-                  ],
+                      // nuevo: cursos array contiene id string
+                      {
+                        $and: [
+                          { $isArray: '$cursos' },
+                          { $in: ['$$cursoIdStr', '$cursos'] },
+                        ],
+                      },
+                    ],
+                  },
                 },
               },
-            },
-            { $project: { _id: 1 } }, // liviano: solo para contar
-          ],
-          as: 'asistentes',
+              { $project: { _id: 1 } }, // liviano: solo para contar
+            ],
+            as: 'asistentes',
+          },
         },
-      },
-      {
-        $project: {
-          nombre: 1,
-          estado: 1,
-          diasCurso: 1,
-          diasActuales: 1,
-          createdAt: 1,
-          totalAsistentes: { $size: '$asistentes' },
+        {
+          $project: {
+            nombre: 1,
+            estado: 1,
+            diasCurso: 1,
+            diasActuales: 1,
+            createdAt: 1,
+            totalAsistentes: { $size: '$asistentes' },
+            horario:1
+          },
         },
-      },
-      { $sort: { createdAt: -1 } },
-    ]);
-  } catch (error) {
-    throw new InternalServerErrorException(
-      'Error al obtener los cursos',
-      error.message,
-    );
+        { $sort: { createdAt: -1 } },
+      ]);
+    } catch (error) {
+      throw new InternalServerErrorException(
+        'Error al obtener los cursos',
+        error.message,
+      );
+    }
   }
-}
-
 
   async findOne(id: string): Promise<CursoDocument> {
     try {
@@ -194,20 +194,22 @@ async findAll(): Promise<any[]> {
     }
   }
 
-  async update(
-    id: string,
-    updateCursoDto: any,
-  ) {
+  async update(id: string, updateCursoDto: any) {
     try {
-      if(updateCursoDto.imagen && updateCursoDto.imagen.includes('data:image')) {
-       const url =  (await this.s3Service.uploadBase64({
-        image: updateCursoDto.imagen,
-        route: 'nic/campanas',
-      })).imageUrl;
-      updateCursoDto.imagen = url;
+      if (
+        updateCursoDto.imagen &&
+        updateCursoDto.imagen.includes('data:image')
+      ) {
+        const url = (
+          await this.s3Service.uploadBase64({
+            image: updateCursoDto.imagen,
+            route: 'nic/campanas',
+          })
+        ).imageUrl;
+        updateCursoDto.imagen = url;
       }
       console.log('Datos a actualizar:', updateCursoDto);
-    
+
       const updatedCurso = await this.cursoModel
         .findByIdAndUpdate(id, updateCursoDto, { new: true })
         .exec();
