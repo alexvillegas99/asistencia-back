@@ -7,7 +7,7 @@ export enum RolUsuario {
   ADMIN = 'ADMIN',
   PROFESOR = 'PROFESOR',
   ESTUDIANTE = 'ASESOR',
-  PSICOLOGO = 'PSICOLOGO'
+  PSICOLOGO = 'PSICOLOGO',
 }
 
 @Schema({ timestamps: true })
@@ -23,6 +23,9 @@ export class Usuario {
 
   @Prop({ type: String, required: true, enum: Object.values(RolUsuario) })
   rol: RolUsuario;
+
+  @Prop({ type: [{ type: String, ref: 'Curso' }], default: [] })
+  cursos: string[];
 }
 
 export const UsuarioSchema = SchemaFactory.createForClass(Usuario);

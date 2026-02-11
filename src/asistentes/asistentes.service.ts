@@ -1390,6 +1390,39 @@ async getCursosPorCedula(cedula: string) {
 }
 
 
+
+async buscarEstudianteGeneral(param: string) {
+  const q = (param || '').trim();
+  if (!q) return [];
+
+  const regex = new RegExp(q, 'i');
+
+  return this.asistentesModel
+    .find(
+      {
+        $or: [
+          { cedula: regex },
+          { nombre: regex },
+          { telefono: regex },
+          { correo: regex },
+        ],
+      },
+      {
+        cedula: 1,
+        nombre: 1,
+        telefono: 1,
+        correo: 1,
+        estado: 1,
+        cursos: 1,
+      },
+    )
+    .populate('cursos')
+    .sort({ _id: -1 })
+    .lean()
+    .exec();
+}
+
+
   
 
 

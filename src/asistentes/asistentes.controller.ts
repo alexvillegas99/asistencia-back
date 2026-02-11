@@ -462,4 +462,9 @@ export class AsistentesController {
   async getCursosPorCedula(@Param('cedula') cedula: string) {
     return this.asistentesService.getCursosPorCedula(cedula);
   }
+
+@Get('buscar/estudiante')
+async buscarEstudianteGeneral(@Query('q') q: string) {
+  return this.asistentesService.buscarEstudianteGeneral(q);
+}
 }
