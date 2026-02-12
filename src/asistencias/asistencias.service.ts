@@ -1052,7 +1052,203 @@ export class AsistenciasService {
       },
       registros: aggr?.registros ?? [],
     };
+  } 
+
+async reportePorCedulaTotalJustificado(
+  cedula: string,
+  cursoId?: string,
+) {
+  // 1️⃣ Buscar asistente
+  const asistente: any = await this.asistentesModel
+    .findOne({ cedula })
+    .lean()
+    .exec();
+
+  if (!asistente) {
+    throw new NotFoundException(
+      `No existe asistente con cédula ${cedula}`,
+    );
   }
+
+  const cursosAsistente: string[] = [
+    ...(Array.isArray(asistente.cursos) ? asistente.cursos : []),
+    ...(asistente.curso ? [asistente.curso] : []),
+  ]
+    .filter(Boolean)
+    .map((x) => String(x));
+
+  const cursoTarget =
+    cursoId && String(cursoId).trim()
+      ? String(cursoId).trim()
+      : asistente.curso
+        ? String(asistente.curso)
+        : (cursosAsistente[0] ?? null);
+
+  if (!cursoTarget) {
+    throw new NotFoundException(
+      `El asistente ${cedula} no tiene cursos asociados.`,
+    );
+  }
+
+  if (cursoId && !cursosAsistente.includes(String(cursoId))) {
+    throw new NotFoundException(
+      `El asistente ${cedula} no pertenece al curso indicado.`,
+    );
+  }
+
+  // 2️⃣ Curso
+  let cursoDoc: any = null;
+
+  if (Types.ObjectId.isValid(String(cursoTarget))) {
+    cursoDoc = await this.cursosModel
+      .findById(cursoTarget)
+      .lean()
+      .exec();
+  }
+
+  const cursoMatchValue = cursoDoc?._id
+    ? String(cursoDoc._id)
+    : String(cursoTarget);
+
+  const curso = {
+    id: cursoMatchValue,
+    nombre: cursoDoc?.nombre ?? null,
+    estado: cursoDoc?.estado ?? null,
+    diasActuales: cursoDoc?.diasActuales ?? 0,
+    diasCurso: cursoDoc?.diasCurso ?? 0,
+  };
+
+  // =============================
+  // 3️⃣ FECHAS DEL CURSO (TODAS)
+  // =============================
+  const diasCursoAgg = await this.asistenciaModel.aggregate([
+    { $match: { curso: cursoMatchValue } },
+    { $group: { _id: '$fecha' } },
+    { $sort: { _id: 1 } },
+  ]);
+
+  const fechasCurso = diasCursoAgg.map((d: any) =>
+    String(d._id),
+  );
+
+  // =============================
+  // 4️⃣ ASISTENCIA REAL
+  // =============================
+  const asistenciaRealAgg =
+    await this.asistenciaModel.aggregate([
+      {
+        $match: {
+          cedula,
+          curso: cursoMatchValue,
+          $or: [
+            { tipo: { $exists: false } },
+            { tipo: { $ne: 'JUSTIFICACION' } },
+          ],
+        },
+      },
+      { $group: { _id: '$fecha' } },
+    ]);
+
+  const fechasAsistenciaReal = new Set(
+    asistenciaRealAgg.map((x: any) => String(x._id)),
+  );
+
+  // =============================
+  // 5️⃣ JUSTIFICACIONES
+  // =============================
+  const justificaciones =
+    await this.asistenciaModel.find({
+      cedula,
+      curso: cursoMatchValue,
+      justificada: true,
+    }).lean();
+
+  const mapaJustificaciones = new Map<string, any>();
+
+  for (const j of justificaciones) {
+    mapaJustificaciones.set(String(j.fecha), j);
+  }
+
+  // =============================
+  // 6️⃣ CLASIFICACIÓN
+  // =============================
+  const faltasJustificadas: any[] = [];
+  const faltasNoJustificadas: string[] = [];
+  const diasConAsistencia: string[] = [];
+
+  for (const fecha of fechasCurso) {
+    const tieneAsistencia =
+      fechasAsistenciaReal.has(fecha);
+    const tieneJustificacion =
+      mapaJustificaciones.has(fecha);
+
+    if (tieneAsistencia) {
+      diasConAsistencia.push(fecha);
+      continue;
+    }
+
+    if (tieneJustificacion) {
+      const j = mapaJustificaciones.get(fecha);
+
+      faltasJustificadas.push({
+        fecha,
+        observacion: j?.observacion ?? null,
+        justificadaPor: j?.justificadaPor ?? null,
+        justificadaAt: j?.justificadaAt ?? null,
+      });
+    } else {
+      faltasNoJustificadas.push(fecha);
+    }
+  }
+
+  // =============================
+  // 7️⃣ RESUMEN
+  // =============================
+  const totalAsistenciasAcumuladas =
+    diasConAsistencia.length;
+
+  const porcentajeAsistencia =
+    curso.diasActuales > 0
+      ? Math.min(
+          100,
+          Math.round(
+            (totalAsistenciasAcumuladas /
+              curso.diasActuales) *
+              100,
+          ),
+        )
+      : 0;
+
+  return {
+    cedula,
+    cursoId: cursoMatchValue,
+    asistente: {
+      id: String(asistente._id),
+      nombre: asistente.nombre ?? null,
+    },
+    curso,
+    resumen: {
+      totalAsistenciasAcumuladas,
+      diasConAsistencia: diasConAsistencia.length,
+      totalDiasEsperados: fechasCurso.length,
+      totalFaltas:
+        faltasJustificadas.length +
+        faltasNoJustificadas.length,
+      totalJustificadas:
+        faltasJustificadas.length,
+      totalNoJustificadas:
+        faltasNoJustificadas.length,
+      porcentajeAsistencia,
+    },
+    faltas: {
+      faltasJustificadas,
+      faltasNoJustificadas,
+      fechasEsperadas: fechasCurso,
+    },
+  };
+}
+
+
 
   /* 
 async pdfPorCedula(cedula: string): Promise<Buffer> {

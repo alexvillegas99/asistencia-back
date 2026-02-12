@@ -39,14 +39,14 @@ export class AsistenciasController {
     return this.asistenciasService.generateAsistenciaReportDebug(idCurso);
   }
    @Get('v2')
-  @ApiQuery({
+  @ApiQuery({ 
     name: 'idCurso',
     required: true,
     description: 'El ID del curso para generar el reporte de asistencias',
     example: '64234c3bdcfa0f3f34097e78',
   })
   async findAllV2(@Query('idCurso') idCurso: string) {
-    
+      console.log(idCurso)
     return this.asistenciasService.generateAsistenciaReport(idCurso);
   }
 
@@ -129,6 +129,20 @@ async getPorCedula(
   console.log('cursoId', cursoId);
   console.log('cedula', cedula);
   return this.asistenciasService.reportePorCedulaTotal(cedula.trim(), cursoId);
+}
+
+
+@Get('por-cedula/justificadas')
+@ApiQuery({ name: 'cedula', required: true, example: '1850459767' })
+@ApiQuery({ name: 'cursoId', required: false, example: '676f...' })
+async getPorCedulaJustificadas(
+  @Query('cedula') cedula: string,
+  @Query('cursoId') cursoId?: string,
+) {
+  if (!cedula?.trim()) throw new BadRequestException('La cédula es requerida.');
+  console.log('cursoId', cursoId);
+  console.log('cedula', cedula);
+  return this.asistenciasService.reportePorCedulaTotalJustificado(cedula.trim(), cursoId);
 }
 
 
