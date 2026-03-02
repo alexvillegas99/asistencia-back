@@ -985,7 +985,7 @@ async addAsistente(arg0: {
     const diasAsistenciasAdicionales = cursos[0]?.diasActuales || 0;
 
     // 3️⃣ Buscar por cédula
-    const existente: any = await this.asistentesModel.findOne({ cedula });
+    const existente: any = await this.asistentesModel.findOne({ negocio });
 
     // ===============================
     // 🆕 NO EXISTE → CREAR
