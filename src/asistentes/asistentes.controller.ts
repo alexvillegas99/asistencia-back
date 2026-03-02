@@ -55,9 +55,13 @@ export class AsistentesController {
     return this.asistentesService.findOne(id);
   }
 
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateAsistenteDto: any) {
-    return this.asistentesService.update(id, updateAsistenteDto);
+
+
+
+    @Patch('bitrix/:id')
+  async update(@Param('id') id: string, @Body() updateAsistenteDto: any) {
+    
+    return await this.asistentesService.update(id, updateAsistenteDto);
   }
 
   @Delete(':id')
@@ -190,6 +194,8 @@ export class AsistentesController {
       );
     }
   }
+
+  
 
   @Post('mover/asistente')
   async moverAsistente(
