@@ -697,24 +697,37 @@ export class AsistenciasService {
     }
   }
 
-  private async incrementarDiasActualesSiCorresponde(
-    cursoId: string,
-    fechaHoyEc: string,
-  ) {
-    await this.cursosModel
-      .updateOne(
-        {
-          _id: cursoId,
-          $or: [
-            { ultimaClaseFecha: { $ne: fechaHoyEc } },
-            { ultimaClaseFecha: null },
-          ],
-        },
-        { $inc: { diasActuales: 1 }, $set: { ultimaClaseFecha: fechaHoyEc } },
-      )
-      .exec();
-  }
+private async incrementarDiasActualesSiCorresponde(
+  cursoId: string,
+  fechaHoyEc: string,
+) {
+  this.logger.debug(`Intentando incrementar día curso=${cursoId} fecha=${fechaHoyEc}`);
 
+  const result = await this.cursosModel
+    .updateOne(
+      {
+        _id: cursoId,
+        $or: [
+          { ultimaClaseFecha: { $ne: fechaHoyEc } },
+          { ultimaClaseFecha: null },
+        ],
+      },
+      {
+        $inc: { diasActuales: 1 },
+        $set: { ultimaClaseFecha: fechaHoyEc },
+      },
+    )
+    .exec();
+
+  this.logger.debug(`Resultado update curso=${cursoId}`);
+  this.logger.debug(JSON.stringify(result));
+
+  if (result.modifiedCount > 0) {
+    this.logger.log(`✅ Día incrementado para curso ${cursoId}`);
+  } else {
+    this.logger.warn(`⚠️ No se incrementó el día para curso ${cursoId} (ya estaba registrado hoy)`);
+  }
+}
   // Corre todos los días a las 22:00 hora Ecuador
   //@Cron('0 22 * * *', { timeZone: 'America/Guayaquil', name: 'validarFaltas22' })
   async validarFaltas() {

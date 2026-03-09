@@ -29,10 +29,20 @@ export class Curso {
   categoria?: string;
 
   @Prop({ type: [Object], default: [] })
-  horario?: Record<string, any>[]; 
+  horario?: Record<string, any>[];
 
   @Prop({ type: String, required: false })
   periodo?: string;
+
+  @Prop({
+    type: String,
+    default: () => {
+      const date = new Date();
+      date.setDate(date.getDate() - 1);
+      return date.toISOString().split('T')[0];
+    },
+  })
+  ultimaClaseFecha: string;
 }
 
 export const CursoSchema = SchemaFactory.createForClass(Curso);
